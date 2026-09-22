@@ -92,7 +92,8 @@
         "click": [
           "archive"
         ]
-      }
+      },
+      "side_effect": true
     },
     {
       "id": "delete",

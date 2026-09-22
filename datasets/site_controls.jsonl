@@ -35,3 +35,6 @@
 {"site":"YouTube","url":"https://www.youtube.com/watch?v=x","transcript":"pop this video out into a small window","expected":"miniplayer","path":"lexical"}
 {"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"write an email to my boss","expected":"compose","path":"lexical"}
 {"site":"Google Search","url":"https://www.google.com/search?q=x","transcript":"show me more results please","expected":"next_page","path":"lexical"}
+{"site":"Google Search","url":"https://www.google.com/search?q=lamps","transcript":"i need to go back to the office later","expected":null,"path":"none"}
+{"site":"Spotify","url":"https://open.spotify.com/","transcript":"i need to go back to the office later","expected":null,"path":"none"}
+{"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"forward this email","expected":"forward","path":"rule"}

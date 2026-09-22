@@ -354,6 +354,26 @@ def site_for_url(url: str) -> str | None:
     return None
 
 
+# Browser commands whose meaning no website may redefine: "go back" is browser history, never
+# Google's previous page of results, and "scroll down" is never "jump to the comments". The whole
+# utterance must be the command — "forward this email" names Gmail's control, not history — and a
+# pack may still *implement* an intent better than the generic path, as Spotify does for "pause".
+_UNIVERSAL_PHRASE = re.compile(
+    r"^(?:go\s+)?(?:back|forward)$|"
+    r"^(?:reload|refresh)(?:\s+(?:this|the)?\s*page)?$|"
+    r"^(?:open\s+)?(?:a\s+)?new\s+tab$|"
+    r"^close\s+(?:this|the)?\s*tab$|"
+    r"^(?:switch\s+tabs?|next\s+tab|previous\s+tab|last\s+tab)$|"
+    r"^scroll\s+(?:up|down)(?:\s+a\s+(?:little|bit|lot))?$",
+    re.I,
+)
+
+
+def universal_command(transcript: str) -> bool:
+    """Whether the whole utterance is a browser command a site pack must not override."""
+    return bool(_UNIVERSAL_PHRASE.match(strip_lead(clean(transcript)).strip(" .,!?")))
+
+
 def explicit_browser_command(transcript: str) -> bool:
     return bool(_COMMAND_PREFIX.search(strip_lead(transcript)))
 

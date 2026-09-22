@@ -83,6 +83,9 @@ Open templates support:
 - Never encode CAPTCHA solving, security-warning bypasses, payment submission or password handling.
 - Keep `instant` for closed, harmless controls whose meaning cannot change with more words.
 - Prefer doing nothing over selecting a weak match.
+- A bare universal command ("go back", "forward", "reload", "new tab", "close tab", "scroll down")
+  always belongs to the browser, so a `say` pattern or `term` that matches one on its own is
+  ignored. Qualify it — "forward this email", "scroll down to the comments" — and it works.
 
 ## Durable selectors
 

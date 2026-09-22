@@ -195,7 +195,7 @@ def looks_like_request(phrase: str) -> bool:
 # control was meant: "open the alison frantz article" would otherwise match Wikipedia's "open a
 # random article" and hijack a command that names something on the page.
 _GENERIC = frozenset(
-    "open show go take get see view make put use give find look read scroll click play start "
+    "open show go back take get see view make put use give find look read scroll click play start "
     "article page video item product thing one result post".split()
 )
 
@@ -224,8 +224,12 @@ def lexical_match(phrase: str, url: str) -> SiteMatch | None:
     if best_score[0] < 2 or best_score[1] < 0.5 or best_score == second_score:
         return None
     examples = _tokens(" ".join((best.description, *best.terms)))
-    if not (words & examples) - _GENERIC:
-        return None  # only everyday words matched; this could be any control
+    matched = words & examples
+    if not matched - _GENERIC and matched != words:
+        # Only everyday words matched, and the speaker said more besides: this could be any control,
+        # and the words that would tell them apart were ignored. When nothing was left over
+        # ("take me back to the start of this article") the everyday words are the whole request.
+        return None
     return SiteMatch(best)
 
 

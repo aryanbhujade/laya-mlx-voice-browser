@@ -25,7 +25,9 @@ Laya answers one multiple-choice question per model pass, over at most 512 token
    "new tab" run mid-speech with no model call. The speaking style decides whether polite requests ("could you
    please…") count as explicit.
 2. **Site packs** (`sites/`) match site-specific explicit phrases and clear natural examples before the model.
-   When rules are insufficient, only relevant controls become a short Laya choice. See
+   When rules are insufficient, only relevant controls become a short Laya choice. A pack never
+   redefines a universal command — "go back" is browser history on every site, not Google's previous
+   page of results — but it may implement one better, as Spotify does for "pause". See
    [Writing site packs](SITE_PACKS.md).
 3. **Stage 1** asks only the unsettled of `is_command`, `intent` and `complete`, over a slim state (transcript,
    page, four most relevant elements, recent actions).

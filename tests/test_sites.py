@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from laya_voice_browser import sites
+from laya_voice_browser.spans import universal_command
 
 SITE_DIR = Path(sites.__file__).parent
 PRIMARY_OPERATIONS = {"key", "click", "click_css", "fill", "open", "scroll_to", "media"}
@@ -185,3 +186,47 @@ def test_a_named_page_element_beats_a_general_site_control():
     decision = engine.decide("toggle the table of contents", page, final=True)
     assert decision.site is None, "the labelled button should win over Wikipedia's contents control"
     assert not any("site_action" in asked for asked in engine.asked)
+
+
+def test_a_site_pack_may_not_redefine_a_universal_browser_command():
+    # "go back" is browser history everywhere, not Google's previous page of results.
+    assert universal_command("go back")
+    assert universal_command("scroll down")
+    assert universal_command("forward")
+    for phrase, url in [
+        ("go back", "https://www.google.com/search?q=x"),
+        ("go back", "https://open.spotify.com/"),
+        ("scroll down", "https://www.youtube.com/watch?v=abc"),
+    ]:
+        assert universal_command(phrase), phrase
+        assert sites.lexical_match(phrase, url) is not None  # the pack would have claimed it
+
+
+def test_a_site_control_that_only_starts_with_a_universal_word_still_matches():
+    # "forward this email" is Gmail's control; only the bare command belongs to the browser.
+    assert not universal_command("forward this email")
+    assert not universal_command("scroll down to the comments")
+    match = sites.match_phrase("forward this email", "https://mail.google.com/mail/u/0/#inbox")
+    assert match is not None and match.action.id == "forward"
+
+
+def test_back_alone_cannot_identify_a_control():
+    # "back" introduces many commands, so it may not pick one while other words go unmatched.
+    assert sites.lexical_match(
+        "i need to go back to the office later", "https://www.google.com/search?q=x"
+    ) is None
+    assert sites.lexical_match(
+        "i need to go back to the office later", "https://open.spotify.com/"
+    ) is None
+
+
+def test_everyday_words_still_match_when_they_are_the_whole_request():
+    match = sites.lexical_match(
+        "take me back to the start of this article", "https://en.wikipedia.org/wiki/Turing"
+    )
+    assert match is not None and match.action.id == "contents"
+
+
+def test_archiving_an_email_is_gated_when_it_was_inferred():
+    action = sites.action_by_id("https://mail.google.com/mail/u/0/#inbox", "archive")
+    assert action is not None and action.side_effect

@@ -33,6 +33,7 @@ from .spans import (
     strip_lead,
     tab_command,
     text_candidates,
+    universal_command,
     url_candidates,
 )
 from .types import Element, ModelDecision, Snapshot
@@ -372,8 +373,11 @@ class LayaEngine:
         answers: dict[str, Any] = {}
         stages: list[dict] = []
 
+        # Grammar first: a pack may implement "pause" better than the generic path, but it may not
+        # turn "go back" into Google's previous page of results.
+        universal = universal_command(transcript)
         # A site control named exactly ("theater mode" on YouTube) needs no model at all.
-        exact = sites.match_phrase(strip_lead(transcript), snapshot.url)
+        exact = None if universal else sites.match_phrase(strip_lead(transcript), snapshot.url)
         if exact:
             return ModelDecision(
                 answers={},
@@ -387,7 +391,8 @@ class LayaEngine:
         # Something named on the page wins over a general site control: "toggle the table of contents"
         # is the button with that label, not Wikipedia's "scroll to the top" control.
         _, _, clear_element = _rank_elements(transcript, snapshot.elements)
-        lexical = None if clear_element else sites.lexical_match(transcript, snapshot.url)
+        skip_pack = universal or clear_element
+        lexical = None if skip_pack else sites.lexical_match(transcript, snapshot.url)
         if lexical:
             return ModelDecision(
                 answers={},
