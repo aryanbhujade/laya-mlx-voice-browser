@@ -33,7 +33,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     private func refreshIcon() {
         let symbol: String
-        if !Permission.missing.isEmpty {
+        if !Permission.missing(for: settings).isEmpty {
             symbol = "exclamationmark.triangle"
         } else {
             symbol = listening ? "waveform.circle.fill" : "waveform"
@@ -49,9 +49,9 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         refreshIcon()
         menu.addItem(disabled("LayaBrowse"))
-        menu.addItem(disabled("Double-tap \(settings.hotkeyOption.title) to talk"))
+        menu.addItem(disabled(settings.hotkeyOption.instruction))
 
-        let missing = Permission.missing
+        let missing = Permission.missing(for: settings)
         if !missing.isEmpty {
             menu.addItem(.separator())
             menu.addItem(disabled("LayaBrowse needs permission:"))
@@ -67,8 +67,14 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
 
         let shortcut = submenu("Shortcut")
-        for option in hotkeyOptions {
+        for option in hotkeyOptions where option.isDoubleTap {
             shortcut.addItem(choice("Double-tap \(option.title)", selected: settings.hotkey == option.id) {
+                $0.hotkey = option.id
+            })
+        }
+        shortcut.addItem(.separator())
+        for option in hotkeyOptions where !option.isDoubleTap {
+            shortcut.addItem(choice("Press \(option.title)", selected: settings.hotkey == option.id) {
                 $0.hotkey = option.id
             })
         }
@@ -78,6 +84,12 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             shortcut.addItem(choice(title, selected: settings.doubleTapMs == value) { $0.doubleTapMs = value })
         }
         menu.addItem(parent(shortcut))
+
+        let style = submenu("Speaking Style")
+        for (title, value) in speakingStyleChoices {
+            style.addItem(choice(title, selected: settings.speakingStyle == value) { $0.speakingStyle = value })
+        }
+        menu.addItem(parent(style))
 
         let sensitivity = submenu("Microphone Sensitivity")
         for (title, value) in sensitivityChoices {

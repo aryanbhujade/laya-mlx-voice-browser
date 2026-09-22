@@ -1,130 +1,140 @@
 # LayaBrowse
 
-Control **Safari or any Chromium browser** by voice on Apple silicon, powered by the open-weight
-[Laya](https://huggingface.co/convaiinnovations/laya) typed-decision model running locally through
-[Laya-MLX](https://huggingface.co/aac6fef/laya-mlx). LayaBrowse is an independent project built on that model;
-Laya itself is made by its own authors, not by this project. Double-tap a key anywhere, say what you want, and it happens, often before you finish the
-sentence. Everything runs on your Mac: speech recognition, the model and the browser control.
+**Browse the web by voice on your Mac.** Double-tap a key, say what you want — "go to YouTube and search for
+lo-fi beats", "click the second result", "scroll down a little" — and it happens, often before you finish the
+sentence. Speech recognition, the decision model and browser control all run locally on Apple silicon.
 
-The model selects from bounded operations and visible page elements; deterministic Python policy authorizes
-the choice, and SafariDriver or the Chrome DevTools Protocol executes it. Laya never writes code, CSS
-selectors, URLs, or dictated text.
+LayaBrowse is powered by [Laya](https://github.com/NandhaKishorM/laya), a small typed-decision model, running
+natively through [Laya-MLX](https://github.com/mizorewww/laya-mlx). Laya never writes code or URLs: it picks
+from a short list of safe operations and the elements visible on the page, and simple, predictable rules decide
+whether to act.
 
-```text
-Apple Speech partials -> Laya-MLX choices -> confidence/safety policy -> browser -> fresh observation
-```
+## What it does
 
-This is an independent Laya implementation inspired by the public, MIT-licensed designs of
-[`browser-use/jev-ultrafast`](https://github.com/browser-use/jev-ultrafast) and
-[`moritzkremb/jev-voice-browser`](https://github.com/moritzkremb/jev-voice-browser). It does not use Jev or
-the TypeSafe API.
-
-## What works
-
-- Native `SFSpeechRecognizer` partial transcripts through a persistent Swift helper.
-- Global double-tap **left Control** toggles continuous voice-control mode. A pause ends and submits one
-  phrase, then recognition immediately resumes; double-tap again to leave voice-control mode.
-- A notch island: pure black wings either side of the MacBook notch, never below it, with a subtle moving
-  glint on its rim. The right wing shows voice-reactive level bars; the left shows what is happening
-  (listening, thinking, opening, searching, clicking, done, “say confirm”, “say a number”). Preview it with
-  `.build/LayaBrowse.app/Contents/MacOS/LayaBrowse --preview` (no permissions needed).
-- On-device recognition is required when Apple's recognizer supports it for the selected locale.
-- Local Laya-MLX inference, warmed once and reused.
-- Real Safari control: navigate, search, click, type, select, Return, scroll, history, reload and tabs.
-- Staged Laya decisions: only the questions a command still needs are asked (0–2 for most commands).
-- Ordered command chains such as “go to YouTube and search for documentaries about bank robberies”. A chain
-  splits only where both sides are complete commands, so “search for guitar tabs and back tracks” stays one
-  search; `datasets/chains.jsonl` holds the labelled cases.
-- Ambiguous targets become numbered badges on the page; say “two” or “the second one” to pick.
-- Polite phrasing (“can you open…”) is understood by the rules while you are still speaking.
-- Unqualified searches inherit supported sites: “search for…” on YouTube searches YouTube.
-- Conversational plans such as “in a new tab, can you search for…” and “open GitHub to see repos for…”.
-- Unscoped web searches use Google by default; DuckDuckGo remains available when explicitly requested.
-- Free-text and URL values are extracted from the transcript and copied verbatim.
-- Stale-page guard before execution.
-- Spoken confirmation before potentially destructive page actions, including plain-looking links that change
-  an account (vote, hide, follow, log out, unsubscribe).
-- A lost browser session is reported once and ends the run instead of failing on every phrase.
-- Typed and word-by-word replay modes for testing without a microphone.
-- Optional JSONL decision/execution trace.
-- Per-stage speech, snapshot, model, policy and execution timings.
-- A labeled command-evaluation harness for Laya-specific threshold calibration.
-
-## Requirements
-
-- Apple silicon Mac
-- macOS 14 or newer
-- Python 3.11+
-- Xcode Command Line Tools (to build the small Swift menu-bar app): `xcode-select --install`
-- For Safari: **Develop > Allow Remote Automation** enabled. Chromium browsers need no setup.
-- Microphone, Speech Recognition, Input Monitoring and Accessibility permissions (LayaBrowse asks on first
-  start)
-
-SafariDriver is included with Safari. The first time, macOS may require:
-
-```bash
-safaridriver --enable
-```
-
-That command changes a machine-level Safari automation setting, so this project never runs it automatically.
-Safari may need to be restarted once after enabling Remote Automation. If a WebDriver session times out while
-an existing Safari window is open, fully quit Safari before retrying so SafariDriver can create its isolated
-automation window; save important tabs first.
+- **Works with Safari and Chromium browsers** — Chrome, Edge, Brave, Chromium, Vivaldi, Opera and Opera GX.
+  "Automatic" follows your default browser.
+- **Acts while you are still talking.** "Go back", "reload" and "open a new tab" run the instant you say them;
+  searches and typing wait until you have finished dictating.
+- **Understands the page.** "Click the talk page" finds the Talk link; "open the Wikipedia result" picks the
+  right search result.
+- **Chains commands.** "Go to YouTube and search for documentaries" runs as two steps; "search for rock and
+  roll" stays one search.
+- **Asks when it is unsure.** If two links match, numbered badges appear on the page — say "two".
+- **Checks before anything risky.** Buying, deleting, sending, signing in or out, voting and similar actions
+  wait for you to say "confirm".
+- **Lives in the menu bar and the notch.** A small black island beside the notch shows what LayaBrowse is
+  doing, with bars that follow your voice; it never covers the page.
+- **Learns how you speak.** There is no "end of phrase" delay to tune: it learns your pace, waits longer after
+  "and…" or "search for…", and ends quickly once your command is complete.
 
 ## Install
 
+Requirements: an Apple silicon Mac, macOS 14 or newer, Python 3.11+, and Xcode Command Line Tools
+(`xcode-select --install`).
+
 ```bash
 git clone https://github.com/aryanbhujade/laya-mlx-voice-browser.git
+```
+
+```bash
 cd laya-mlx-voice-browser
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-layabrowse install
 ```
-
-That last command sets LayaBrowse up as a background app (see below); you do not need the terminal after it.
-
-The first run downloads the selected Laya checkpoint. Later decisions can run locally from the Hugging Face
-cache. To download explicitly before going offline:
 
 ```bash
-hf download aac6fef/laya-mlx
+python3 -m venv .venv && source .venv/bin/activate && pip install -e .
 ```
-
-## Run in the background (recommended)
-
-Set it up once; it then starts at login and waits in the background, with or without a browser open:
 
 ```bash
 layabrowse install
 ```
 
-This builds the LayaBrowse app, downloads the model, and registers a per-user LaunchAgent that starts
-**LayaBrowse.app** at login; the app runs the Python backend as its child, so macOS shows "LayaBrowse" in its
-background-activity
-notice, Login Items and permission prompts. A waveform icon appears in the menu bar.
+`layabrowse install` builds the app, downloads the Laya weights (about 850 MB, once), and sets LayaBrowse to
+start at login. After that you never need the terminal: LayaBrowse waits in the menu bar whether or not a
+browser is open, and opens one when you give your first command.
 
-On first start LayaBrowse asks for Speech Recognition, Microphone, Input Monitoring and Accessibility in turn.
-Accessibility can only be switched on by you in System Settings; until then the menu-bar icon shows a warning
-and lists what is missing, and the shortcut starts working the moment it is allowed (no restart needed).
+**Using Safari?** Turn on **Safari ▸ Settings ▸ Advanced ▸ Show features for web developers**, then
+**Develop ▸ Allow Remote Automation**. Chromium browsers need no setup.
 
-Double-tap **left Control** anywhere to talk; the browser opens on the first command and is reopened
-automatically if you close its window. Everything else is in the menu-bar icon:
+## Permissions
+
+LayaBrowse asks for two permissions the first time it starts, one prompt at a time:
+
+| Permission | Why |
+|---|---|
+| **Microphone** | To hear your commands — only while listening is on. |
+| **Speech Recognition** | To turn speech into text — on your Mac for languages Apple supports on-device, including English. |
+
+That is all. The shortcut needs no permission: LayaBrowse only notices modifier keys going up and down (the
+same way apps offer "double-tap Option"), never what you type. It does not need Accessibility, Input
+Monitoring or Screen Recording. macOS also shows a one-time notice that LayaBrowse can run in the background;
+you can manage it in **System Settings ▸ General ▸ Login Items**.
+
+## Using it
+
+1. **Double-tap left Control** (or your chosen shortcut). The island opens beside the notch and a soft chime
+   plays.
+2. **Speak.** A short pause ends each command; LayaBrowse keeps listening for the next one.
+3. **Double-tap again** to stop listening.
+
+| Say | What happens |
+|---|---|
+| "go to wikipedia", "open github dot com" | Opens the site |
+| "search for alan turing", "search youtube for lo-fi beats" | Searches the web, or the named site |
+| "click view history", "open the first result" | Clicks the matching link or button |
+| "type hello world into the search box", "press enter" | Types exactly what you said |
+| "scroll down a little", "scroll to the bottom" | Scrolls |
+| "go back", "go forward", "reload" | History |
+| "open a new tab", "next tab", "close this tab" | Tabs |
+| "two", "the second one" | Picks a numbered badge |
+| "confirm" / "cancel" | Answers a confirmation |
+
+## Settings
+
+Everything is in the menu-bar icon:
 
 | Setting | Options |
 |---|---|
-| Shortcut | double-tap left/right Control, right Option or right Command; fast, normal or relaxed |
-| Microphone Sensitivity | low (ignores background noise) · medium · high (quiet speech) |
-| Browser | Automatic (your default browser) · Safari · any installed Chrome, Edge, Brave, Chromium, Vivaldi, Opera |
-| Search Engine | Google · DuckDuckGo |
-| Sounds, Show Notch Island | on / off |
+| **Shortcut** | Double-tap left or right Control, left or right Option, or right Command; or press ⌥ Space or ⌃⌥ Space. Double-tap speed: fast, normal, relaxed. |
+| **Speaking Style** | *Polite* understands "could you please open YouTube?" instantly. *Direct* treats only commands like "open YouTube" as instant commands, so conversation ("could you go back to what you said") is much less likely to trigger anything. |
+| **Microphone Sensitivity** | *Low* ignores background noise and other voices; *High* picks up quiet speech. |
+| **Browser** | Automatic (your default browser), Safari, or any installed Chromium browser. |
+| **Search Engine** | Google or DuckDuckGo for plain "search for…" commands. |
+| **Sounds** | The start/stop chime. |
+| **Show Notch Island** | The island beside the notch. |
 
-There is no end-of-phrase setting: LayaBrowse learns how long to wait from the gaps between your words, waits
-longer after words like "and" or "search for", ends sooner once it already understands a complete command,
-and becomes more patient whenever it notices it cut you off. The learned profile is
-`~/Library/Application Support/laya-voice-browser/speech-profile.json`.
+The menu also has Start/Stop Listening, Open Log and Quit LayaBrowse.
 
-Settings live in `~/Library/Application Support/laya-voice-browser/config.json`. Manage the service with:
+**Chromium browsers** open in their own window with a dedicated LayaBrowse profile, next to your everyday
+browser (Chromium does not allow voice control of your main profile). Sign in there once and it stays signed
+in. **Safari** uses its automation window, which starts signed out each time.
+
+## Performance
+
+Measured on an Apple M4 Pro (24 GB) with the benchmarks in `scripts/`.
+
+| | |
+|---|---|
+| **Speech to text** (on-device) | First words appear ~20–30 ms into processing; a whole 1.4–2.2 s command is transcribed in 41–103 ms (5/5 exactly right) |
+| **Decision, built-in phrasing** ("go back", "go to youtube", "search for …") | 0 ms — no model needed |
+| **Decision, while you are still speaking** | 18 ms median |
+| **Decision, clicking something on the page** | 50 ms median |
+| **Decision, free-form request** ("I want to learn about enigma") | 76 ms median |
+| **Right element clicked** | 96% of 27 commands on 5 real pages (Wikipedia, Hacker News, DuckDuckGo, GitHub); the one miss asked instead of guessing |
+| **Unwanted actions** while you are mid-sentence or talking to someone else | 0 of 26 |
+| **Browser actions** (Chrome) | Scroll, type, switch tab ~0.1–0.2 s; open a page ~0.7–1.1 s including loading |
+| **Startup** | ~1 s to load the model at login |
+| **Memory** | ~0.9 GB while idle (the model weights are 843 MB) |
+
+## Privacy
+
+Speech is recognised on your Mac (for languages Apple supports on-device, including English), and transcripts
+and page contents are never sent anywhere; the only download is the model weights, once. Settings,
+the learned speaking profile and logs are stored locally:
+
+- `~/Library/Application Support/laya-voice-browser/` — `config.json`, `speech-profile.json`, browser profiles
+- `~/Library/Logs/laya-voice-browser/service.log`
+
+## Managing LayaBrowse
 
 ```bash
 layabrowse status
@@ -138,133 +148,26 @@ layabrowse logs
 layabrowse uninstall
 ```
 
-The service restarts itself after a crash but not after **Quit LayaBrowse**. Starting and stopping listening
-plays a soft chime (turn it off with **Sounds**). Logs are in
-`~/Library/Logs/laya-voice-browser/service.log`.
+LayaBrowse restarts itself if it crashes, but not after you choose **Quit LayaBrowse**.
 
-### Browsers
-
-- **Safari** uses Safari's automation window (logged out on every start; Google may show a CAPTCHA that
-  cannot be solved in that window).
-- **Chromium browsers** (Chrome, Edge, Brave, Chromium, Vivaldi, Opera, Opera GX) run in their own window with
-  a dedicated LayaBrowse profile, next to your everyday browser: sign in there once and it stays signed in, and
-  anything like a CAPTCHA can be solved by hand. Clicks and typing are sent as real input events through the
-  Chrome DevTools Protocol. Chromium does not allow remote control of your everyday default profile, which is
-  why LayaBrowse keeps its own.
-
-## Run in the foreground
-
-Voice mode:
+## Development
 
 ```bash
-layabrowse --url https://example.com --trace runs/session.jsonl
+pip install -e '.[dev]'
 ```
-
-Leave that process running, then double-tap the **left Control key** to enter voice-control mode. The native
-helper stays resident between commands. A 1.1-second pause submits the current phrase and immediately starts
-listening for the next one; the black listening island stays expanded throughout. Double-tap left Control
-again to leave voice-control mode and collapse the island. On first use, macOS may ask for Microphone, Speech
-Recognition, Accessibility and Input Monitoring permissions for `LayaBrowse`.
-
-Typed command:
 
 ```bash
-layabrowse --command "go to wikipedia"
+pytest && ruff check .
 ```
 
-Word-by-word replay, which exercises early-action behavior:
+The unit tests need no model, browser, microphone or network. Benchmarks: `scripts/benchmark_pages.py`
+(targets and latency on saved pages), `scripts/check_streaming.py` (no early actions mid-sentence),
+`scripts/evaluate_commands.py` (raw model accuracy), and `LayaBrowse --benchmark-speech` (transcription).
+`layabrowse --command "go to wikipedia"` runs a single typed command without the background app. How it works
+inside is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-```bash
-layabrowse --replay "open wikipedia and search for Alan Turing" --word-delay 0.3
-```
+## License
 
-Use another checkpoint or local directory:
-
-```bash
-layabrowse --model aac6fef/laya-mlx --command "go back"
-```
-
-Environment options:
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `LAYA_MODEL` | `aac6fef/laya-mlx` | Hub id or local checkpoint |
-| `LAYA_DTYPE` | `float16` | MLX inference precision |
-| `LAYA_BATCH_SIZE` | `16` | Questions per model batch |
-| `LAYA_COMPILE` | `0` | Enable MLX compilation after measuring the workload |
-| `LAYA_SPEECH_LOCALE` | current locale | Apple Speech recognition locale |
-| `LAYA_CONFIG` | Application Support path | Settings file shared by the app and backend |
-
-## Safety boundary
-
-Laya's answer is not authorization. Code applies completeness and confidence thresholds, refuses ambiguous
-page targets, waits for final free-text payloads, checks that the page is unchanged, and asks for spoken
-confirmation before destructive-looking actions. Confirmations expire after 10 seconds and retain the exact
-page fingerprint they were created against; a changed page cancels execution. Model, Safari and confirmation
-work is serialized through one worker. SafariDriver still has the authority of the controlled browser session:
-use a dedicated Safari profile or logged-out test accounts during development.
-
-Current thresholds are conservative starting values, **not calibrated production guarantees**. Before using
-the project against accounts that matter, build a labeled command set, measure false activations, calibrate
-the chosen checkpoint, and add site-specific verification.
-
-See `docs/TRAINING.md` and run the starter raw-model evaluation with:
-
-```bash
-python scripts/evaluate_commands.py --predictions runs/predictions.jsonl
-```
-
-## Tests
-
-```bash
-pytest
-ruff check .
-python -m compileall -q src tests
-./native/build.sh
-```
-
-Unit tests do not open Safari, request microphone access, download model weights, or make network calls.
-
-## Architecture
-
-- `native/Laya/` — the LayaBrowse menu-bar app: speech, shortcut, notch island, settings menu, permissions, and the
-  backend child process (`Backend.swift`).
-- `backend.py` — the Python process the app runs: transcripts in on stdin, island statuses out on stdout.
-- `browsers.py`, `safari.py`, `chromium.py` — browser choice and the Safari (WebDriver) and Chromium (DevTools
-  Protocol) backends, sharing one page script in `page.py`.
-- `laya.py` — warmed Laya-MLX model and typed question construction.
-- `safari.py` — compact DOM observation, freshness checks and Safari execution.
-- `policy.py` — confidence, completeness, payload and confirmation gates.
-- `controller.py` — partial-transcript debounce, stale-result cancellation and traces.
-- `spans.py` — deterministic verbatim text/URL candidate extraction.
-
-### How a decision is made
-
-Laya answers one multiple-choice question per model pass, over at most 512 tokens of
-`[question + options] + state`, so latency grows with the number of questions (~20–60 ms each).
-
-1. **Grammar first.** Explicit commands ("go to wikipedia", "go back", "scroll down a little") are settled by
-   rules in `spans.py`; `go back`, `go forward`, `reload` and `new tab` run mid-speech with no model call.
-2. **Stage 1 (gate):** only the unsettled questions among `is_command`, `intent` and `complete`.
-3. **Stage 2 (details):** only what the resolved intent needs, and only once the policy would act:
-   `target` + `destructive` for clicks, `text_span` for searches, `url_span`/`site` when no site was named.
-4. **Targets:** elements are ranked by word overlap with the transcript. A unique best label match is used
-   directly; ties go to Laya's `target` question over at most 9 `"label (role)"` options.
-
-State is ordered by usefulness (transcript, page, 12 ranked elements, 2 recent actions, 300 characters of page
-text) and trimmed from the end to fit each question's token budget instead of being cut silently.
-
-Benchmarks against saved Safari snapshots (`tests/fixtures`):
-
-```bash
-python scripts/benchmark_pages.py      # target accuracy and model latency on real pages
-python scripts/check_streaming.py      # unsafe early actions on partial speech
-python scripts/evaluate_commands.py    # raw Laya head accuracy
-```
-
-## License and attribution
-
-MIT. See `NOTICE` for the two reference projects. The Laya model is by its original authors
-([convaiinnovations/laya](https://huggingface.co/convaiinnovations/laya)); the MLX conversion is
-[aac6fef/laya-mlx](https://huggingface.co/aac6fef/laya-mlx). Their weights and packages keep their own
-licenses and provenance; LayaBrowse is not affiliated with them.
+MIT. Laya and Laya-MLX are separate projects with their own licenses:
+[NandhaKishorM/laya](https://github.com/NandhaKishorM/laya) and
+[mizorewww/laya-mlx](https://github.com/mizorewww/laya-mlx).

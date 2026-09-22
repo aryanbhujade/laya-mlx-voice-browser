@@ -49,3 +49,14 @@ def test_spoken_numbers_pick_only_bare_choices():
     assert spoken_number("to", 3) == 2
     assert spoken_number("five", 3) is None
     assert spoken_number("go to wikipedia", 3) is None
+
+
+def test_direct_speaking_style_leaves_polite_requests_to_the_model(monkeypatch, tmp_path):
+    import json
+
+    config = tmp_path / "direct.json"
+    config.write_text(json.dumps({"speaking_style": "direct"}))
+    monkeypatch.setenv("LAYA_CONFIG", str(config))
+    assert deterministic_intent("could you go back to what you said") is None
+    assert deterministic_intent("go back") == "go_back"
+    assert command_plan("and then can you search for cats") == ["can you search for cats"]

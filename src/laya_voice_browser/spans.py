@@ -45,12 +45,11 @@ _COMMAND_PREFIX = re.compile(
     re.I,
 )
 
-# Polite or conversational openers that precede a command: "can you please open …", "and then …".
-_LEAD = re.compile(
-    r"^(?:(?:and\s+then|and|then|so|okay|ok|now)\s+)*"
-    r"(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|please\s+)?",
-    re.I,
-)
+# Openers that precede a command. Connectives ("and then …") are always dropped; polite requests
+# ("can you please open …") only in the "polite" speaking style. In the "direct" style they are left
+# for the model, so conversation like "could you go back to what you said" rarely triggers anything.
+_CONNECTIVES = re.compile(r"^(?:(?:and\s+then|and|then|so|okay|ok|now)\s+)*", re.I)
+_POLITE = re.compile(r"^(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|please\s+)", re.I)
 # Misrecognitions accepted only right after a navigation verb: "open get up" is GitHub, but
 # "how to get up early" is not.
 _NAVIGATION_ALIASES = {"github": ("get up",)}
@@ -87,9 +86,18 @@ def clean(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
 
 
-def strip_lead(text: str) -> str:
-    """Drop conversational openers so rules see the command itself."""
-    return _LEAD.sub("", clean(text), count=1)
+def polite_style() -> bool:
+    from .config import load
+
+    return load().speaking_style != "direct"
+
+
+def strip_lead(text: str, *, polite: bool | None = None) -> str:
+    """Drop openers so the rules see the command itself (polite requests only in the polite style)."""
+    text = _CONNECTIVES.sub("", clean(text), count=1)
+    if polite if polite is not None else polite_style():
+        text = _POLITE.sub("", text, count=1)
+    return text
 
 
 def remainder_after(text: str, consumed: str) -> str | None:
@@ -177,18 +185,15 @@ def command_chain(transcript: str) -> list[str]:
 def command_plan(transcript: str) -> list[str]:
     """Expand common conversational phrasing into an ordered list of browser commands."""
     text = clean(transcript).strip(" ,.;:-")
-    text = re.sub(
-        r"^(?:(?:and\s+then|and|then)\s+)?(?:(?:can|could|would|will)\s+you\s+)?",
-        "",
-        text,
-        flags=re.I,
-    )
-    text = re.sub(
-        r"\b(and(?:\s+then)?|then)\s+(?:(?:can|could|would|will)\s+you\s+)",
-        r"\1 ",
-        text,
-        flags=re.I,
-    )
+    text = re.sub(r"^(?:(?:and\s+then|and|then)\s+)?", "", text, flags=re.I)
+    if polite_style():
+        text = _POLITE.sub("", text, count=1)
+        text = re.sub(
+            r"\b(and(?:\s+then)?|then)\s+(?:(?:can|could|would|will)\s+you\s+)",
+            r"\1 ",
+            text,
+            flags=re.I,
+        )
 
     new_tab = re.match(
         r"^(?:in\s+)?(?:a\s+)?new\s+tab\s*,?\s+"
@@ -229,6 +234,25 @@ def _push(items: list[str], value: str) -> None:
         return
     if value.casefold() not in {item.casefold() for item in items}:
         items.append(value)
+
+
+def explicit_payload(transcript: str) -> str | None:
+    """The text to search or type when the command states it plainly: "search for enigma machine" →
+    "enigma machine". None when the rest also names a place ("…into the search box", "…on YouTube")
+    or the command does not start with a text verb; the model then chooses among candidates."""
+    text = strip_lead(clean(transcript))
+    quoted = re.search(r'["“”\']([^"“”\']{1,160})["“”\']', text)
+    if quoted:
+        return quoted.group(1).strip() or None
+    matches = [match for pattern in _PAYLOAD if (match := pattern.search(text)) and match.start() == 0]
+    if not matches:
+        return None
+    tail = text[max(matches, key=lambda item: len(item.group(0))).end() :]
+    if _DESTINATION.search(tail) or mentioned_site(tail) or re.search(r"\b(?:on|in|at)\s+\w+\s*$", tail):
+        return None
+    candidates: list[str] = []
+    _push(candidates, tail)
+    return candidates[0] if candidates else None
 
 
 def text_candidates(transcript: str) -> list[str]:

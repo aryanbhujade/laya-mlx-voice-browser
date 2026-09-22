@@ -35,8 +35,8 @@ final class SpeechController {
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var task: SFSpeechRecognitionTask?
     private var silenceTimer: Timer?
-    private var eventTap: CFMachPort?
-    private var tapRetry: Timer?
+    private var combo: ComboHotkey?
+    private var doubleTap: ModifierDoubleTap?
     private var voiceControlActive = false
     private var segmentActive = false
     private var segmentFinalizing = false
@@ -44,8 +44,6 @@ final class SpeechController {
     private var finalEmittedForSegment = false
     private var tapInstalled = false
     private var utteranceID = UUID().uuidString
-    private var lastHotkeyDown: TimeInterval = 0
-    private var hotkeyWasDown = false
 
     init(recognizer: SFSpeechRecognizer, island: NotchIsland, settings: LayaSettings) {
         self.recognizer = recognizer
@@ -54,72 +52,38 @@ final class SpeechController {
     }
 
     func apply(_ newSettings: LayaSettings) {
+        let shortcutChanged = newSettings.hotkey != settings.hotkey
         settings = newSettings
         island.enabled = newSettings.island
-        lastHotkeyDown = 0
+        if shortcutChanged { startHotkey() }
     }
 
     // MARK: hotkey
 
-    /// Install the key tap now if permitted, otherwise keep retrying quietly: Accessibility is
-    /// granted by the user in System Settings, and Laya starts working the moment they do.
+    /// Arm the chosen shortcut. Neither kind needs a keyboard permission.
     func startHotkey() {
-        if installEventTap() { return }
-        log("waiting for Accessibility and Input Monitoring permission for the shortcut")
-        tapRetry?.invalidate()
-        let retry = Timer(timeInterval: 2, repeats: true) { [weak self] timer in
-            guard let self, self.installEventTap() else { return }
-            timer.invalidate()
-            log("shortcut active")
-            self.menuBar?.setListening(false)
+        stopHotkey()
+        let option = settings.hotkeyOption
+        switch option.kind {
+        case .combination(let keyCode, let modifiers):
+            combo = ComboHotkey(keyCode: keyCode, modifiers: modifiers) { [weak self] in self?.toggleListening() }
+            if combo == nil {
+                log("could not register \(option.title); another app may already use it")
+                island.update(IslandStatus(state: .error, label: "Shortcut in use"), ttl: 3)
+            }
+        case .doubleTap(let keycode, let flag):
+            let tap = ModifierDoubleTap(keycode: keycode, flag: flag,
+                                        interval: { [weak self] in (self?.settings.doubleTapMs ?? 350) / 1000 },
+                                        action: { [weak self] in self?.toggleListening() })
+            tap.start()
+            doubleTap = tap
         }
-        RunLoop.main.add(retry, forMode: .common)
-        tapRetry = retry
     }
 
-    private static let tapCallback: CGEventTapCallBack = { _, type, event, userInfo in
-        guard let userInfo else { return Unmanaged.passUnretained(event) }
-        let controller = Unmanaged<SpeechController>.fromOpaque(userInfo).takeUnretainedValue()
-        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-            if let tap = controller.eventTap { CGEvent.tapEnable(tap: tap, enable: true) }
-            return Unmanaged.passUnretained(event)
-        }
-        if type == .flagsChanged
-            && event.getIntegerValueField(.keyboardEventKeycode) == controller.settings.hotkeyOption.keycode {
-            controller.handleHotkey(event)
-            return nil
-        }
-        return Unmanaged.passUnretained(event)
-    }
-
-    private func installEventTap() -> Bool {
-        guard eventTap == nil else { return true }
-        let mask = CGEventMask(1) << CGEventType.flagsChanged.rawValue
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: Self.tapCallback,
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ), let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else { return false }
-        eventTap = tap
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-        return true
-    }
-
-    private func handleHotkey(_ event: CGEvent) {
-        let down = event.flags.contains(settings.hotkeyOption.flag)
-        defer { hotkeyWasDown = down }
-        guard down && !hotkeyWasDown else { return }
-        let now = ProcessInfo.processInfo.systemUptime
-        if now - lastHotkeyDown <= settings.doubleTapMs / 1000 {
-            lastHotkeyDown = 0
-            DispatchQueue.main.async { [weak self] in self?.toggleListening() }
-        } else {
-            lastHotkeyDown = now
-        }
+    private func stopHotkey() {
+        doubleTap?.stop()
+        doubleTap = nil
+        combo = nil
     }
 
     // MARK: voice control

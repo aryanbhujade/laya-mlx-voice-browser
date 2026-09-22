@@ -8,7 +8,7 @@ rm -rf "$ROOT/.build/LayaSpeech.app" "$ROOT/.build/Laya.app"  # earlier names of
 mkdir -p "$MACOS"
 cp "$ROOT/native/Info.plist" "$APP/Contents/Info.plist"
 swiftc "$ROOT"/native/Laya/*.swift \
-  -framework AppKit -framework AVFoundation -framework CoreGraphics -framework Network -framework QuartzCore -framework Speech \
+  -framework AppKit -framework AVFoundation -framework Carbon -framework CoreGraphics -framework Network -framework QuartzCore -framework Speech \
   -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "$ROOT/native/Info.plist" \
   -o "$MACOS/LayaBrowse"
 # Keep the ad-hoc development build's designated requirement stable across recompiles. Without an

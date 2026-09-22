@@ -18,6 +18,7 @@ from .spans import (
     as_https,
     deterministic_intent,
     explicit_browser_command,
+    explicit_payload,
     mentioned_site,
     site_for_url,
     spoken_scroll_amount,
@@ -87,7 +88,7 @@ def _build_action(intent: str, decision: ModelDecision, snapshot: Snapshot) -> t
             return {"type": "navigate", "url": SITE_HOME[site]}, f"open {site}"
         return None, "no supported website was identified"
     if intent == "search_web":
-        query = _selected_span(decision, "text_span")
+        query = explicit_payload(transcript) or _selected_span(decision, "text_span")
         if not query and decision.candidates["text"]:
             first = decision.candidates["text"][0]
             if first.casefold() != transcript.casefold():
@@ -119,7 +120,7 @@ def _build_action(intent: str, decision: ModelDecision, snapshot: Snapshot) -> t
             return None, "the selected page target is stale"
         if intent == "click_element":
             return {"type": "click", "target_id": target}, f"click {target}"
-        text = _selected_span(decision, "text_span")
+        text = explicit_payload(transcript) or _selected_span(decision, "text_span")
         if not text and decision.candidates["text"]:
             first = decision.candidates["text"][0]
             if first.casefold() != transcript.casefold():

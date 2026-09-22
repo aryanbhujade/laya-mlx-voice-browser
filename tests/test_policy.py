@@ -127,13 +127,13 @@ def test_plain_return_is_not_always_treated_as_destructive():
 
 def test_uncertain_text_head_does_not_fall_back_to_whole_transcript():
     answers = base_answers("search_web")
-    answers["text_span"] = choice("none", {"none": 0.6, "search something": 0.4}, confidence=0.1)
+    answers["text_span"] = choice("none", {"none": 0.6, "i wonder about something": 0.4}, confidence=0.1)
     decision = ModelDecision(
         answers,
-        {"text": ["search something"], "url": []},
+        {"text": ["i wonder about something"], "url": []},
         8.0,
         "test",
-        {"transcript": "search something"},
+        {"transcript": "i wonder about something"},
     )
     result = evaluate(decision, snapshot(), final=True, silent_seconds=0.0)
     assert result.verdict == "clarify"

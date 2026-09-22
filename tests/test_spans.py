@@ -74,3 +74,16 @@ def test_plans_site_open_with_implied_search():
 def test_normalizes_common_github_recognition_error():
     assert mentioned_site("can you open get up") == "github"
     assert url_candidates("can you open get up.com") == ["github.com"]
+
+
+def test_plain_payloads_are_taken_by_rule_and_ambiguous_ones_left_to_the_model():
+    from laya_voice_browser.spans import explicit_payload
+
+    assert explicit_payload("search for enigma machine") == "enigma machine"
+    assert explicit_payload("can you search for rock and roll documentaries") == "rock and roll documentaries"
+    assert explicit_payload("search youtube for lofi hip hop") == "lofi hip hop"
+    assert explicit_payload("look up alan turing") == "alan turing"
+    assert explicit_payload('type "hello world"') == "hello world"
+    assert explicit_payload("type hello world into the search box") is None
+    assert explicit_payload("search for cats on youtube") is None
+    assert explicit_payload("I want to learn about enigma") is None

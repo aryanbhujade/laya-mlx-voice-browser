@@ -5,9 +5,9 @@ import sys
 import time
 from pathlib import Path
 
+from . import browsers, config
 from .controller import StreamingController
 from .laya import LayaEngine
-from .safari import SafariBrowser
 from .speech import native_events, replay_events
 from .status import StatusChannel, free_udp_port
 from .types import TranscriptEvent
@@ -17,14 +17,15 @@ def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
         prog="layabrowse",
         description=(
-            "Control Safari from partial speech using local Laya-MLX decisions. "
+            "LayaBrowse: browse by voice with local Laya-MLX decisions. "
             "Background service: install | uninstall | status | logs | daemon."
         ),
     )
-    result.add_argument("--url", default="https://example.com", help="Initial Safari URL")
+    result.add_argument("--url", help="Open this page first")
+    result.add_argument("--browser", help="safari, chrome, edge, … (default: the Browser setting)")
     result.add_argument("--model", help="Local path or Hugging Face Laya-MLX checkpoint")
     result.add_argument("--trace", type=Path, help="Append inspectable JSONL decisions and outcomes")
-    result.add_argument("--keep-open", action="store_true", help="Leave the controlled Safari session open")
+    result.add_argument("--keep-open", action="store_true", help="Leave the browser window open afterwards")
     modes = result.add_mutually_exclusive_group()
     modes.add_argument("--command", help="Run one final typed command instead of listening")
     modes.add_argument("--replay", help="Replay one command word by word")
@@ -74,9 +75,12 @@ def main(argv: list[str] | None = None) -> int:
     except Exception as exc:
         print(f"Could not load Laya-MLX: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
-    print(f"Loaded {engine.model_name}. Starting Safari…", flush=True)
+    key = browsers.resolve(args.browser or config.load().browser)
+    print(f"Loaded {engine.model_name}. Opening {key}…", flush=True)
     try:
-        browser = SafariBrowser(args.url)
+        browser = browsers.open_browser(key)
+        if args.url:
+            browser.execute({"type": "navigate", "url": args.url})
     except Exception as exc:
         print(str(exc), file=sys.stderr)
         return 2

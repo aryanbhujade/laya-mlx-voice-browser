@@ -24,6 +24,7 @@ from .questions import (
 from .spans import (
     deterministic_intent,
     explicit_browser_command,
+    explicit_payload,
     mentioned_site,
     spoken_scroll_amount,
     spoken_tab_direction,
@@ -42,6 +43,7 @@ _MIN_STATE_ELEMENTS = 4
 # halves their latency and scored at least as well on the command set.
 _GATE_ELEMENTS = 4
 _PREFIX_CACHE_LIMIT = 512
+_MLX_CACHE_LIMIT_BYTES = 64 * 1024 * 1024
 
 
 _FILLABLE_ROLES = {"input", "textbox", "combobox", "searchbox", "textarea", "select"}
@@ -199,7 +201,11 @@ class LayaEngine:
             if self._agent is not None:
                 return
             import laya_mlx as laya
+            import mlx.core as mx
 
+            # MLX keeps freed GPU buffers for reuse and, uncapped, grew past 1.8 GB in a background
+            # process that is idle most of the time; 64 MB costs about 1 ms per decision.
+            mx.set_cache_limit(_MLX_CACHE_LIMIT_BYTES)
             self._agent = laya.load(
                 self.model_name,
                 dtype=os.getenv("LAYA_DTYPE", "float16"),
@@ -414,7 +420,7 @@ class LayaEngine:
                 questions[qid] = span_question(qid, urls)
             elif qid == "site" and not urls and not mentioned_site(transcript):
                 questions[qid] = fixed["site"]
-            elif qid == "text_span" and text_spans:
+            elif qid == "text_span" and text_spans and not explicit_payload(transcript):
                 questions[qid] = span_question(qid, text_spans)
             elif qid == "target" and target_labels:
                 questions[qid] = target_question(list(target_labels))

@@ -12,6 +12,9 @@ application.setActivationPolicy(.accessory)
 if CommandLine.arguments.contains("--preview") {
     runIslandPreview()
 }
+if CommandLine.arguments.contains("--benchmark-speech") {
+    runSpeechBenchmark()
+}
 
 let arguments = CommandLine.arguments
 let environment = ProcessInfo.processInfo.environment
@@ -86,9 +89,10 @@ let menuBar = MenuBarItem(
 speech.menuBar = menuBar
 EndpointHints.handler = { hint in speech.endpointHint(hint) }
 
-// First run: ask for each permission in turn, then arm the shortcut (it keeps waiting for
-// Accessibility if the user has not switched Laya on yet).
-Permission.requestMissing { speech.startHotkey() }
+// First run: ask for microphone and speech recognition, one prompt at a time. The shortcut needs no
+// permission, so it is armed straight away.
+speech.startHotkey()
+Permission.requestMissing(Permission.missing(for: settings)) {}
 
 fputs("laya-speech: ready pid=\(ProcessInfo.processInfo.processIdentifier)\n", stderr)
 fflush(stderr)

@@ -16,6 +16,7 @@ class Settings:
     hotkey: str = "left_control"
     double_tap_ms: float = 350
     mic_sensitivity: str = "medium"
+    speaking_style: str = "polite"
     browser: str = "auto"
     search_engine: str = "google"
     sounds: bool = True

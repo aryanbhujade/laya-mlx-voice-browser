@@ -1,5 +1,5 @@
 import AppKit
-import CoreGraphics
+import Carbon
 import Foundation
 
 /// User settings, stored as JSON the Python backend also reads (`laya_voice_browser/config.py`).
@@ -7,6 +7,7 @@ struct LayaSettings: Codable, Equatable {
     var hotkey = "left_control"
     var doubleTapMs: Double = 350
     var micSensitivity = "medium"
+    var speakingStyle = "polite"
     var browser = "auto"
     var searchEngine = "google"
     var sounds = true
@@ -16,6 +17,7 @@ struct LayaSettings: Codable, Equatable {
         case hotkey, browser, sounds, island
         case doubleTapMs = "double_tap_ms"
         case micSensitivity = "mic_sensitivity"
+        case speakingStyle = "speaking_style"
         case searchEngine = "search_engine"
     }
 
@@ -28,6 +30,7 @@ struct LayaSettings: Codable, Equatable {
         hotkey = (try? values.decode(String.self, forKey: .hotkey)) ?? defaults.hotkey
         doubleTapMs = (try? values.decode(Double.self, forKey: .doubleTapMs)) ?? defaults.doubleTapMs
         micSensitivity = (try? values.decode(String.self, forKey: .micSensitivity)) ?? defaults.micSensitivity
+        speakingStyle = (try? values.decode(String.self, forKey: .speakingStyle)) ?? defaults.speakingStyle
         browser = (try? values.decode(String.self, forKey: .browser)) ?? defaults.browser
         searchEngine = (try? values.decode(String.self, forKey: .searchEngine)) ?? defaults.searchEngine
         sounds = (try? values.decode(Bool.self, forKey: .sounds)) ?? defaults.sounds
@@ -72,18 +75,43 @@ struct LayaSettings: Codable, Equatable {
 }
 
 struct HotkeyOption {
+    enum Kind {
+        /// A modifier tapped twice.
+        case doubleTap(keycode: UInt16, flag: NSEvent.ModifierFlags)
+        /// A registered key combination.
+        case combination(keyCode: UInt32, modifiers: UInt32)
+    }
+
     let id: String
     let title: String
-    let keycode: Int64
-    let flag: CGEventFlags
+    let kind: Kind
+
+    var isDoubleTap: Bool {
+        if case .doubleTap = kind { return true }
+        return false
+    }
+
+    /// How the menu tells the user to start talking.
+    var instruction: String {
+        isDoubleTap ? "Double-tap \(title) to talk" : "Press \(title) to talk"
+    }
 }
 
-/// A modifier key tapped twice. Right-hand keys avoid clashing with everyday shortcuts.
 let hotkeyOptions = [
-    HotkeyOption(id: "left_control", title: "Left Control ⌃", keycode: 59, flag: .maskControl),
-    HotkeyOption(id: "right_control", title: "Right Control ⌃", keycode: 62, flag: .maskControl),
-    HotkeyOption(id: "right_option", title: "Right Option ⌥", keycode: 61, flag: .maskAlternate),
-    HotkeyOption(id: "right_command", title: "Right Command ⌘", keycode: 54, flag: .maskCommand),
+    HotkeyOption(id: "left_control", title: "Left Control ⌃", kind: .doubleTap(keycode: 59, flag: .control)),
+    HotkeyOption(id: "right_control", title: "Right Control ⌃", kind: .doubleTap(keycode: 62, flag: .control)),
+    HotkeyOption(id: "left_option", title: "Left Option ⌥", kind: .doubleTap(keycode: 58, flag: .option)),
+    HotkeyOption(id: "right_option", title: "Right Option ⌥", kind: .doubleTap(keycode: 61, flag: .option)),
+    HotkeyOption(id: "right_command", title: "Right Command ⌘", kind: .doubleTap(keycode: 54, flag: .command)),
+    HotkeyOption(id: "option_space", title: "⌥ Space",
+                 kind: .combination(keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey))),
+    HotkeyOption(id: "control_option_space", title: "⌃⌥ Space",
+                 kind: .combination(keyCode: UInt32(kVK_Space), modifiers: UInt32(controlKey | optionKey))),
+]
+
+let speakingStyleChoices: [(String, String)] = [
+    ("Polite — \u{201C}could you open YouTube?\u{201D}", "polite"),
+    ("Direct — \u{201C}open YouTube\u{201D}", "direct"),
 ]
 
 let doubleTapChoices: [(String, Double)] = [("Fast", 250), ("Normal", 350), ("Relaxed", 500)]
