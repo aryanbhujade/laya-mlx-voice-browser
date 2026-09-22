@@ -38,6 +38,9 @@ _STOP = {
     "please", "tab", "that", "the", "this", "to",
 }
 _MIN_STATE_ELEMENTS = 4
+# "Is this a command?" and "which operation?" depend on the words, not the page body: a slim state
+# halves their latency and scored at least as well on the command set.
+_GATE_ELEMENTS = 4
 _PREFIX_CACHE_LIMIT = 512
 
 
@@ -130,6 +133,13 @@ def _element_line(element: Element, page_host: str) -> str:
     return f'{element.id} {element.role} "{_element_label(element, page_host)}"{href}'
 
 
+def _gate_state(state: dict) -> dict:
+    """The first-stage view: transcript, page, the few most relevant elements and recent actions."""
+    slim = {key: value for key, value in state.items() if key != "visible_page_text"}
+    slim["interactive_elements"] = state.get("interactive_elements", [])[:_GATE_ELEMENTS]
+    return slim
+
+
 def _recent_lines(history: list[dict[str, Any]]) -> list[str]:
     lines = []
     for item in history[-MAX_RECENT_ACTIONS:]:
@@ -197,6 +207,15 @@ class LayaEngine:
                 compile=os.getenv("LAYA_COMPILE", "0") == "1",
                 cache_prompts=True,
             )
+        self._prime()
+
+    def _prime(self) -> None:
+        """Run one throwaway decision so the first real command does not pay kernel warm-up."""
+        try:
+            page = Snapshot("https://example.com/", "Example", "", (Element("e01", "link", "More", "a"),), "")
+            self.decide("click more", page, final=False, silent_seconds=0.0)
+        except Exception:
+            pass
 
     def _prefix_length(self, question: dict) -> int:
         from laya_mlx.common import build_prefix
@@ -299,6 +318,7 @@ class LayaEngine:
         """Ask specific fixed questions directly, bypassing staging; for evaluation scripts."""
         self.warm()
         state, _, _, _ = self._state(transcript[-400:], snapshot, recent_actions)
+        state = _gate_state(state)
         fixed = fixed_questions()
         answers: dict[str, Any] = {}
         self._run(state, {qid: fixed[qid] for qid in question_ids}, answers, [])
@@ -332,7 +352,7 @@ class LayaEngine:
         if not final and not early:
             gate["complete"] = fixed["complete"]
         if gate:
-            self._run(state, gate, answers, stages)
+            self._run(_gate_state(state), gate, answers, stages)
 
         # Stage 2: the questions this intent needs, only once the policy would act on them.
         intent, intent_ok, _ = intent_gate(answers, transcript, element_match)

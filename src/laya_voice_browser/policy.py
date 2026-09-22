@@ -5,6 +5,7 @@ from dataclasses import replace
 from urllib.parse import parse_qs, quote_plus, urlparse
 
 from .answers import _choice, _confidence, _probability
+from .config import load as load_settings
 from .questions import (
     PAYLOAD_SILENCE_SECONDS,
     SILENCE_COMPLETE_SECONDS,
@@ -96,7 +97,8 @@ def _build_action(intent: str, decision: ModelDecision, snapshot: Snapshot) -> t
         if not query:
             return None, "no complete search text was identified"
         site = mentioned_site(transcript) or _current_site_scope(transcript, snapshot.url)
-        template = SITE_SEARCH.get(site, SITE_SEARCH["google"])
+        engine = load_settings().search_engine
+        template = SITE_SEARCH.get(site) or SITE_SEARCH.get(engine, SITE_SEARCH["google"])
         return {"type": "navigate", "url": template.format(query=quote_plus(query))}, f"search for {query}"
     if intent in {"click_element", "type_into_field", "select_option"}:
         target_answer = answers.get("target", {})

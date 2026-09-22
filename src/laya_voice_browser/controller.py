@@ -15,6 +15,7 @@ from .policy import evaluate
 from .questions import DEBOUNCE_SECONDS
 from .safety import deterministic_destructive
 from .spans import clean, command_plan, remainder_after, spoken_number
+from .status import action_kind
 from .types import PolicyResult, Snapshot, TranscriptEvent
 
 PENDING_TTL_SECONDS = 10.0
@@ -22,6 +23,18 @@ CHOICE_TTL_SECONDS = 12.0
 MAX_CONSUMED_UTTERANCES = 32
 _CONFIRM = {"confirm", "yes", "yes confirm", "do it", "go ahead"}
 _CANCEL = {"cancel", "no", "never mind", "stop"}
+
+
+def endpoint_hint(policy: PolicyResult) -> str | None:
+    """How finished a mid-sentence phrase sounds, for the app's adaptive end-of-phrase timing."""
+    if policy.verdict in {"act", "confirm", "choose"}:
+        return "complete"
+    failed = next((reason["name"] for reason in policy.reasons if not reason["passed"]), None)
+    if failed == "payload_final":
+        return "likely_complete"  # the command is clear; the dictated text may still be going
+    if policy.verdict == "wait":
+        return "incomplete"
+    return None
 
 
 @dataclass(frozen=True)
@@ -53,12 +66,14 @@ class StreamingController:
         *,
         trace_path: Path | None = None,
         announce: Callable[[str], None] = print,
+        status: Callable[..., None] | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.browser = browser
         self.engine = engine
         self.trace_path = trace_path
         self.announce = announce
+        self._status_sink = status
         self._clock = clock
         self._lock = threading.RLock()
         self._idle = threading.Condition(self._lock)
@@ -120,6 +135,7 @@ class StreamingController:
                 self._pending = None
                 self._generation += 1
                 self.announce("cancelled pending action")
+                self._status("listening")
                 return
             elif lowered in _CONFIRM | _CANCEL:
                 self.announce("no pending action to confirm or cancel")
@@ -207,6 +223,8 @@ class StreamingController:
                     at=event.at,
                 )
         stage_started = time.perf_counter()
+        if event.final:
+            self._status("thinking")
         try:
             snapshot_started = time.perf_counter()
             snapshot = self.browser.snapshot()
@@ -260,7 +278,10 @@ class StreamingController:
                 "page": {"url": snapshot.url, "title": snapshot.title, "fingerprint": snapshot.fingerprint},
             }
             self._trace(record)
+            if not event.final:
+                self._endpoint(endpoint_hint(policy))
             if policy.verdict == "confirm" and policy.action:
+                self._status("confirm", ttl=PENDING_TTL_SECONDS)
                 now = self._clock()
                 with self._lock:
                     self._pending = PendingAction(
@@ -277,6 +298,7 @@ class StreamingController:
                     decision_ready=decision_ready,
                 )
             elif policy.verdict == "choose" and policy.action:
+                self._status("choose", ttl=CHOICE_TTL_SECONDS)
                 with self._lock:
                     self._choice = PendingChoice(
                         template=policy.action,
@@ -288,10 +310,15 @@ class StreamingController:
                 show = getattr(self.browser, "show_candidates", None)
                 if show:
                     show([(item["number"], item["id"]) for item in policy.candidates])
+            elif policy.verdict == "clarify":
+                self._status("unsure", ttl=2.0)
+            elif event.final:
+                self._status("listening")
             return policy
         except BrowserSessionLost:
             raise
         except Exception as exc:
+            self._status("error", ttl=2.5)
             self.announce(f"error: {type(exc).__name__}: {exc}")
             self._trace(
                 {
@@ -310,6 +337,7 @@ class StreamingController:
             now = self._clock()
             with self._lock:
                 self._pending = PendingAction(action, choice.fingerprint, now, now + PENDING_TTL_SECONDS)
+            self._status("confirm", ttl=PENDING_TTL_SECONDS)
             self.announce(f'say "confirm" to {action["type"]} {picked["label"]!r}')
             return
         self.announce(f"picked {number}: {picked['label']}")
@@ -332,6 +360,7 @@ class StreamingController:
             self.session_lost = True
             if self._timer:
                 self._timer.cancel()
+        self._status("error", label="Browser closed", ttl=4.0)
         self.announce(f"browser session ended ({exc}); restart laya-voice-browser to continue")
         self._trace({"at": self._clock(), "session_lost": str(exc)})
 
@@ -357,9 +386,11 @@ class StreamingController:
         confirmed: bool = False,
     ) -> None:
         execution_started = time.perf_counter()
+        self._status("acting", kind=action_kind(action))
         try:
             outcome = self.browser.execute(action, expected_fingerprint=fingerprint)
         except StalePage:
+            self._status("unsure", label="Page changed", ttl=2.0)
             self.announce("Safari changed before execution; discarded the stale decision")
             return
         finished = time.perf_counter()
@@ -386,8 +417,38 @@ class StreamingController:
                 self._consumed.popitem(last=False)
         if had_choice:
             self._clear_badges()
+        self._status("done", ttl=1.2)
         self.announce(f"executed: {action['type']} -> {outcome['after_url']}")
         self._trace({"execution": item})
+
+    def prepare_browser(self) -> None:
+        """Open the browser ahead of the first command (e.g. when voice control turns on)."""
+        ensure = getattr(self.browser, "ensure", None)
+        if ensure and not getattr(self.browser, "open", True):
+            self._submit_job(self._prepare_browser, ensure)
+
+    def _prepare_browser(self, ensure: Callable[[], Any]) -> None:
+        try:
+            ensure()
+        except Exception as exc:
+            self._status("error", label="Browser failed", ttl=3.0)
+            self.announce(f"could not open the browser: {exc}")
+
+    def _endpoint(self, hint: str | None) -> None:
+        sink = getattr(self._status_sink, "endpoint", None)
+        if hint and sink:
+            try:
+                sink(hint)
+            except Exception:
+                pass
+
+    def _status(self, state: str, **details: Any) -> None:
+        """Mirror progress on the notch island; never let display problems affect control."""
+        if self._status_sink:
+            try:
+                self._status_sink(state, **details)
+            except Exception:
+                pass
 
     def _expire_pending_locked(self) -> None:
         if self._pending and self._clock() > self._pending.expires_at:

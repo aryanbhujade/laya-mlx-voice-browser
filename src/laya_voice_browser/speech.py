@@ -8,30 +8,48 @@ import signal
 import subprocess
 import tempfile
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from .types import TranscriptEvent
+
+
+class HelperQuit(RuntimeError):
+    """The user chose Quit in the Laya menu-bar item."""
 
 
 def project_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def app_bundle(root: Path | None = None) -> Path:
+    return (root or project_root()) / ".build" / "Laya.app"
+
+
+def app_binary(root: Path | None = None) -> Path:
+    return app_bundle(root) / "Contents" / "MacOS" / "Laya"
+
+
 def build_native_helper(root: Path | None = None) -> Path:
     root = root or project_root()
     script = root / "native" / "build.sh"
     subprocess.run([str(script)], check=True, cwd=root)
-    binary = root / ".build" / "LayaSpeech.app" / "Contents" / "MacOS" / "LayaSpeech"
+    binary = app_binary(root)
     if not binary.is_file():
         raise RuntimeError("Native speech helper build did not produce an executable")
     return binary
 
 
-def native_events(root: Path | None = None) -> Iterator[TranscriptEvent]:
+def native_events(
+    root: Path | None = None,
+    *,
+    status_port: int | None = None,
+    on_signal: Callable[[str], None] | None = None,
+) -> Iterator[TranscriptEvent]:
+    """Transcripts from the Laya app; `on_signal` receives events such as "voice_on"."""
     root = root or project_root()
-    app = root / ".build" / "LayaSpeech.app"
-    if not (app / "Contents" / "MacOS" / "LayaSpeech").is_file():
+    app = app_bundle(root)
+    if not app_binary(root).is_file():
         build_native_helper(root)
     temporary = Path(tempfile.mkdtemp(prefix="laya-speech-"))
     stdout_path = temporary / "stdout.jsonl"
@@ -50,6 +68,9 @@ def native_events(root: Path | None = None) -> Iterator[TranscriptEvent]:
     for name in ("LAYA_SPEECH_LOCALE", "LAYA_HOTKEY_INTERVAL_MS", "LAYA_SILENCE_MS"):
         if name in os.environ:
             command.extend(["--env", f"{name}={os.environ[name]}"])
+    if status_port:
+        command.extend(["--env", f"LAYA_STATUS_PORT={status_port}"])
+    command.extend(["--env", f"LAYA_PARENT_PID={os.getpid()}"])
     command.append(str(app))
     process = subprocess.Popen(
         command,
@@ -70,12 +91,16 @@ def native_events(root: Path | None = None) -> Iterator[TranscriptEvent]:
             time.sleep(0.05)
         if helper_pid is None:
             details = stderr_path.read_text(encoding="utf-8").strip()
-            raise RuntimeError(details or "Laya Speech did not report ready within 5 seconds")
+            raise RuntimeError(details or "The Laya app did not report ready within 5 seconds")
         with stdout_path.open("r", encoding="utf-8") as output:
             while True:
                 line = output.readline()
                 if line:
                     raw = json.loads(line)
+                    if "event" in raw:
+                        if on_signal:
+                            on_signal(str(raw["event"]))
+                        continue
                     yield TranscriptEvent(
                         text=str(raw["text"]),
                         final=bool(raw.get("final")),
@@ -89,7 +114,9 @@ def native_events(root: Path | None = None) -> Iterator[TranscriptEvent]:
                     break
                 time.sleep(0.04)
         details = stderr_path.read_text(encoding="utf-8").strip()
-        raise RuntimeError(details or "Laya Speech exited unexpectedly")
+        if "quit requested" in details:
+            raise HelperQuit("Quit from the menu bar")
+        raise RuntimeError(details or "The Laya app exited unexpectedly")
     finally:
         if helper_pid:
             try:

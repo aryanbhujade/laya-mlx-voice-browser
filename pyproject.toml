@@ -13,6 +13,7 @@ authors = [{ name = "Aryan Bhujade" }]
 dependencies = [
   "laya-mlx>=0.2.0,<1",
   "selenium>=4.35,<5",
+  "websockets>=13,<17",
 ]
 
 [project.optional-dependencies]

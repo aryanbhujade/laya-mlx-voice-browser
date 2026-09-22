@@ -1,12 +1,15 @@
 # Laya-MLX Voice Browser
 
-Control **Safari** from streaming speech using local, open-weight Laya typed decisions on Apple silicon.
+Control **Safari or any Chromium browser** by voice, using local, open-weight Laya typed decisions on
+Apple silicon. Double-tap a key anywhere, say what you want, and it happens, often before you finish the
+sentence. Everything runs on your Mac: speech recognition, the model and the browser control.
+
 The model selects from bounded operations and visible page elements; deterministic Python policy authorizes
-the choice, and Apple's bundled SafariDriver executes it. Laya never writes code, CSS selectors, URLs, or
-dictated text.
+the choice, and SafariDriver or the Chrome DevTools Protocol executes it. Laya never writes code, CSS
+selectors, URLs, or dictated text.
 
 ```text
-Apple Speech partials -> Laya-MLX choices -> confidence/safety policy -> SafariDriver -> fresh observation
+Apple Speech partials -> Laya-MLX choices -> confidence/safety policy -> browser -> fresh observation
 ```
 
 This is an independent Laya implementation inspired by the public, MIT-licensed designs of
@@ -19,7 +22,10 @@ the TypeSafe API.
 - Native `SFSpeechRecognizer` partial transcripts through a persistent Swift helper.
 - Global double-tap **left Control** toggles continuous voice-control mode. A pause ends and submits one
   phrase, then recognition immediately resumes; double-tap again to leave voice-control mode.
-- A non-activating Dynamic-Island-style overlay expands from the MacBook notch while listening.
+- A notch island: pure black wings either side of the MacBook notch, never below it, with a subtle moving
+  glint on its rim. The right wing shows voice-reactive level bars; the left shows what is happening
+  (listening, thinking, opening, searching, clicking, done, “say confirm”, “say a number”). Preview it with
+  `.build/Laya.app/Contents/MacOS/Laya --preview` (no permissions needed).
 - On-device recognition is required when Apple's recognizer supports it for the selected locale.
 - Local Laya-MLX inference, warmed once and reused.
 - Real Safari control: navigate, search, click, type, select, Return, scroll, history, reload and tabs.
@@ -47,9 +53,9 @@ the TypeSafe API.
 - Apple silicon Mac
 - macOS 14 or newer
 - Python 3.11+
-- Safari with **Develop > Allow Remote Automation** enabled
-- Microphone and Speech Recognition permissions for voice mode
-- Accessibility and Input Monitoring permissions for the suppressing global left-Control shortcut
+- Xcode Command Line Tools (to build the small Swift menu-bar app): `xcode-select --install`
+- For Safari: **Develop > Allow Remote Automation** enabled. Chromium browsers need no setup.
+- Microphone, Speech Recognition, Input Monitoring and Accessibility permissions (Laya asks on first start)
 
 SafariDriver is included with Safari. The first time, macOS may require:
 
@@ -65,10 +71,15 @@ automation window; save important tabs first.
 ## Install
 
 ```bash
+git clone https://github.com/aryanbhujade/laya-mlx-voice-browser.git
+cd laya-mlx-voice-browser
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e '.[dev]'
+laya-voice-browser install
 ```
+
+That last command sets Laya up as a background app (see below); you do not need the terminal after it.
 
 The first run downloads the selected Laya checkpoint. Later decisions can run locally from the Hugging Face
 cache. To download explicitly before going offline:
@@ -77,7 +88,66 @@ cache. To download explicitly before going offline:
 hf download aac6fef/laya-mlx
 ```
 
-## Run
+## Run in the background (recommended)
+
+Set it up once; it then starts at login and waits in the background, with or without a browser open:
+
+```bash
+laya-voice-browser install
+```
+
+This builds the Laya app, downloads the model, and registers a per-user LaunchAgent that starts **Laya.app**
+at login; the app runs the Python backend as its child, so macOS shows "Laya" in its background-activity
+notice, Login Items and permission prompts. A waveform icon appears in the menu bar.
+
+On first start Laya asks for Speech Recognition, Microphone, Input Monitoring and Accessibility in turn.
+Accessibility can only be switched on by you in System Settings; until then the menu-bar icon shows a warning
+and lists what is missing, and the shortcut starts working the moment it is allowed (no restart needed).
+
+Double-tap **left Control** anywhere to talk; the browser opens on the first command and is reopened
+automatically if you close its window. Everything else is in the menu-bar icon:
+
+| Setting | Options |
+|---|---|
+| Shortcut | double-tap left/right Control, right Option or right Command; fast, normal or relaxed |
+| Microphone Sensitivity | low (ignores background noise) · medium · high (quiet speech) |
+| Browser | Automatic (your default browser) · Safari · any installed Chrome, Edge, Brave, Chromium, Vivaldi, Opera |
+| Search Engine | Google · DuckDuckGo |
+| Sounds, Show Notch Island | on / off |
+
+There is no end-of-phrase setting: Laya learns how long to wait from the gaps between your words, waits
+longer after words like "and" or "search for", ends sooner once it already understands a complete command,
+and becomes more patient whenever it notices it cut you off. The learned profile is
+`~/Library/Application Support/laya-voice-browser/speech-profile.json`.
+
+Settings live in `~/Library/Application Support/laya-voice-browser/config.json`. Manage the service with:
+
+```bash
+laya-voice-browser status
+```
+
+```bash
+laya-voice-browser logs
+```
+
+```bash
+laya-voice-browser uninstall
+```
+
+The service restarts itself after a crash but not after **Quit Laya**. Logs are in
+`~/Library/Logs/laya-voice-browser/service.log`.
+
+### Browsers
+
+- **Safari** uses Safari's automation window (logged out on every start; Google may show a CAPTCHA that
+  cannot be solved in that window).
+- **Chromium browsers** (Chrome, Edge, Brave, Chromium, Vivaldi, Opera, Opera GX) run in their own window with
+  a dedicated Laya profile, next to your everyday browser: sign in there once and it stays signed in, and
+  anything like a CAPTCHA can be solved by hand. Clicks and typing are sent as real input events through the
+  Chrome DevTools Protocol. Chromium does not allow remote control of your everyday default profile, which is
+  why Laya keeps its own.
+
+## Run in the foreground
 
 Voice mode:
 
@@ -89,7 +159,7 @@ Leave that process running, then double-tap the **left Control key** to enter vo
 helper stays resident between commands. A 1.1-second pause submits the current phrase and immediately starts
 listening for the next one; the black listening island stays expanded throughout. Double-tap left Control
 again to leave voice-control mode and collapse the island. On first use, macOS may ask for Microphone, Speech
-Recognition, Accessibility and Input Monitoring permissions for `Laya Speech`.
+Recognition, Accessibility and Input Monitoring permissions for `Laya`.
 
 Typed command:
 
@@ -118,8 +188,7 @@ Environment options:
 | `LAYA_BATCH_SIZE` | `16` | Questions per model batch |
 | `LAYA_COMPILE` | `0` | Enable MLX compilation after measuring the workload |
 | `LAYA_SPEECH_LOCALE` | current locale | Apple Speech recognition locale |
-| `LAYA_HOTKEY_INTERVAL_MS` | `350` | Maximum gap between left-Control taps |
-| `LAYA_SILENCE_MS` | `1100` | Silence that ends the current utterance |
+| `LAYA_CONFIG` | Application Support path | Settings file shared by the app and backend |
 
 ## Safety boundary
 
@@ -153,7 +222,11 @@ Unit tests do not open Safari, request microphone access, download model weights
 
 ## Architecture
 
-- `native/LayaSpeech.swift` — native streaming microphone transcription.
+- `native/Laya/` — the menu-bar app: speech, shortcut, notch island, settings menu, permissions, and the
+  backend child process (`Backend.swift`).
+- `backend.py` — the Python process the app runs: transcripts in on stdin, island statuses out on stdout.
+- `browsers.py`, `safari.py`, `chromium.py` — browser choice and the Safari (WebDriver) and Chromium (DevTools
+  Protocol) backends, sharing one page script in `page.py`.
 - `laya.py` — warmed Laya-MLX model and typed question construction.
 - `safari.py` — compact DOM observation, freshness checks and Safari execution.
 - `policy.py` — confidence, completeness, payload and confirmation gates.

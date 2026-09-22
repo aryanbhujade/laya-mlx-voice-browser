@@ -239,3 +239,30 @@ def test_lost_session_is_reported_once_and_stops_processing():
     controller.close()
     assert controller.session_lost
     assert sum("session ended" in message for message in messages) == 1
+
+
+def test_controller_reports_progress_to_the_island():
+    statuses = []
+    controller = StreamingController(
+        FakeBrowser(), FakeEngine(), announce=lambda _: None, status=lambda state, **kw: statuses.append(
+            (state, kw.get("kind"))
+        )
+    )
+    controller.submit(event("go back", "u1"))
+    controller.wait_idle()
+    controller.close()
+    assert statuses == [("thinking", None), ("acting", "back"), ("done", None)]
+
+
+def test_mid_sentence_evaluations_tell_the_app_how_finished_the_phrase_sounds():
+    from laya_voice_browser.controller import endpoint_hint
+    from laya_voice_browser.types import PolicyResult
+
+    def reasons(*names_passed):
+        return [{"name": name, "passed": passed} for name, passed in names_passed]
+
+    assert endpoint_hint(PolicyResult("act", "go back")) == "complete"
+    dictating = PolicyResult("wait", "", reasons=reasons(("intent", True), ("payload_final", False)))
+    assert endpoint_hint(dictating) == "likely_complete"
+    assert endpoint_hint(PolicyResult("wait", "", reasons=reasons(("intent", False)))) == "incomplete"
+    assert endpoint_hint(PolicyResult("ignore", "")) is None

@@ -1,75 +1,19 @@
 # ruff: noqa: E501
 from __future__ import annotations
 
-import hashlib
-import json
 import time
 from typing import Any
 
 from .browser import BrowserSessionLost, StalePage
+from .page import CANDIDATES_JS, SNAPSHOT_JS, decision_still_valid, snapshot_from_raw
 from .questions import MAX_OBSERVED_ELEMENTS
 from .safety import deterministic_destructive
-from .types import Element, Snapshot
+from .types import Snapshot
 
 __all__ = ["BrowserSessionLost", "SafariBrowser", "StalePage", "deterministic_destructive"]
 
-_SNAPSHOT_JS = r"""
-const destructive = /\b(buy|purchase|pay|place order|delete|remove|send|submit|publish|confirm|sign in|log in)\b/i;
-const selectors = [
-  'a[href]', 'button', 'input:not([type="hidden"])', 'textarea', 'select',
-  '[role="button"]', '[role="link"]', '[role="tab"]', '[role="option"]',
-  '[contenteditable="true"]'
-].join(',');
-const visible = (el) => {
-  const r = el.getBoundingClientRect();
-  const s = getComputedStyle(el);
-  return r.width >= 4 && r.height >= 4 && r.bottom > 0 && r.right > 0 &&
-    r.top < innerHeight && r.left < innerWidth && s.visibility !== 'hidden' && s.display !== 'none';
-};
-const label = (el) => (el.getAttribute('aria-label') || el.innerText || el.value ||
-  el.placeholder || el.title || el.name || '').replace(/\s+/g, ' ').trim().slice(0, 100);
-document.querySelectorAll('[data-laya-id]').forEach((el) => el.removeAttribute('data-laya-id'));
-let n = 0;
-const elements = [...document.querySelectorAll(selectors)].filter(visible).map((el) => {
-  let id = el.getAttribute('data-laya-id');
-  if (!id) { id = `e${String(++n).padStart(2, '0')}`; el.setAttribute('data-laya-id', id); }
-  const text = label(el);
-  return {
-    id,
-    role: el.getAttribute('role') || ({A:'link',BUTTON:'button',INPUT:'input',TEXTAREA:'textbox',SELECT:'select'}[el.tagName] || el.tagName.toLowerCase()),
-    tag: el.tagName.toLowerCase(), text, placeholder: el.placeholder || '', value: el.value || '',
-    href: el.href ? new URL(el.href, location.href).href.slice(0, 180) : '',
-    destructive_hint: destructive.test(text),
-    in_main: Boolean(el.closest('main,[role="main"],article')),
-    top: Math.round(el.getBoundingClientRect().top)
-  };
-}).slice(0, arguments[0]);
-return {
-  url: location.href,
-  title: document.title,
-  text: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 5000),
-  elements
-};
-"""
 
 _NAVIGATION_WAIT_SECONDS = 3.0
-
-_CANDIDATES_JS = r"""
-document.querySelectorAll('.__laya-badge').forEach((el) => el.remove());
-for (const [n, id] of arguments[0]) {
-  const el = document.querySelector(`[data-laya-id="${id}"]`);
-  if (!el) continue;
-  const r = el.getBoundingClientRect();
-  const badge = document.createElement('div');
-  badge.className = '__laya-badge';
-  badge.textContent = String(n);
-  badge.style.cssText = `position:absolute;z-index:2147483000;pointer-events:none;
-    left:${Math.max(0, r.left + scrollX - 10)}px;top:${Math.max(0, r.top + scrollY - 10)}px;
-    background:#2563eb;color:#fff;font:700 14px/1 -apple-system,sans-serif;padding:5px 8px;
-    border-radius:999px;border:2px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.4)`;
-  document.body.appendChild(badge);
-}
-"""
 
 
 def _session_lost(exc: Exception) -> bool:
@@ -110,39 +54,12 @@ class SafariBrowser:
 
     def snapshot(self) -> Snapshot:
         try:
-            raw = self.driver.execute_script(_SNAPSHOT_JS, MAX_OBSERVED_ELEMENTS)
+            raw = self.driver.execute_script(SNAPSHOT_JS, MAX_OBSERVED_ELEMENTS)
         except Exception as exc:
             if _session_lost(exc):
                 raise BrowserSessionLost("The Safari automation window is gone") from exc
             raise
-        elements = tuple(
-            Element(
-                id=str(item.get("id", "")),
-                role=str(item.get("role", "")),
-                text=str(item.get("text", "")),
-                tag=str(item.get("tag", "")),
-                href=str(item.get("href", "")),
-                placeholder=str(item.get("placeholder", "")),
-                value=str(item.get("value", "")),
-                destructive_hint=bool(item.get("destructive_hint")),
-                in_main=bool(item.get("in_main")),
-                top=float(item.get("top", 0.0)),
-            )
-            for item in raw.get("elements", [])
-            if item.get("id")
-        )
-        compact = {
-            "url": raw.get("url", ""),
-            "title": raw.get("title", ""),
-            "elements": [element.compact() for element in elements],
-        }
-        snapshot = Snapshot(
-            url=str(raw.get("url", "")),
-            title=str(raw.get("title", "")),
-            text=str(raw.get("text", "")),
-            elements=elements,
-            fingerprint=hashlib.sha256(json.dumps(compact, sort_keys=True).encode()).hexdigest(),
-        )
+        snapshot = snapshot_from_raw(raw)
         self._last_snapshot = snapshot
         return snapshot
 
@@ -170,10 +87,10 @@ class SafariBrowser:
             time.sleep(0.02)
 
     def show_candidates(self, candidates: list[tuple[int, str]]) -> None:
-        self.driver.execute_script(_CANDIDATES_JS, [[number, element_id] for number, element_id in candidates])
+        self.driver.execute_script(CANDIDATES_JS, [[number, element_id] for number, element_id in candidates])
 
     def clear_candidates(self) -> None:
-        self.driver.execute_script(_CANDIDATES_JS, [])
+        self.driver.execute_script(CANDIDATES_JS, [])
 
     def execute(self, action: dict[str, Any], expected_fingerprint: str | None = None) -> dict[str, Any]:
         try:
@@ -185,8 +102,8 @@ class SafariBrowser:
 
     def _execute(self, action: dict[str, Any], expected_fingerprint: str | None) -> dict[str, Any]:
         if expected_fingerprint and self._last_snapshot:
-            fresh = self.snapshot()
-            if fresh.fingerprint != expected_fingerprint:
+            decided = self._last_snapshot
+            if not decision_still_valid(decided, self.snapshot(), expected_fingerprint, action):
                 raise StalePage("Safari changed after the decision; no action was executed")
         kind = action["type"]
         before_url = self.driver.current_url
