@@ -3,17 +3,17 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
-  <key>CFBundleExecutable</key><string>Laya</string>
-  <key>CFBundleIdentifier</key><string>dev.aryan.laya</string>
+  <key>CFBundleExecutable</key><string>LayaBrowse</string>
+  <key>CFBundleIdentifier</key><string>dev.aryan.layabrowse</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
-  <key>CFBundleName</key><string>Laya</string>
-  <key>CFBundleDisplayName</key><string>Laya</string>
+  <key>CFBundleName</key><string>LayaBrowse</string>
+  <key>CFBundleDisplayName</key><string>LayaBrowse</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
-  <key>NSMicrophoneUsageDescription</key><string>Laya listens for browser commands after you double-tap your shortcut key.</string>
-  <key>NSSpeechRecognitionUsageDescription</key><string>Laya turns your spoken commands into text on this Mac.</string>
+  <key>NSMicrophoneUsageDescription</key><string>LayaBrowse listens for browser commands after you double-tap your shortcut key.</string>
+  <key>NSSpeechRecognitionUsageDescription</key><string>LayaBrowse turns your spoken commands into text on this Mac.</string>
 </dict>
 </plist>

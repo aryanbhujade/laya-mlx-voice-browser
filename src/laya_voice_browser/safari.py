@@ -1,6 +1,7 @@
 # ruff: noqa: E501
 from __future__ import annotations
 
+import threading
 import time
 from typing import Any
 
@@ -14,12 +15,18 @@ __all__ = ["BrowserSessionLost", "SafariBrowser", "StalePage", "deterministic_de
 
 
 _NAVIGATION_WAIT_SECONDS = 3.0
+# Selenium waits 120 s by default; a stopped session should fail fast so the next command reopens.
+_COMMAND_TIMEOUT_SECONDS = 20.0
+_ALIVE_TIMEOUT_SECONDS = 2.5
 
 
 def _session_lost(exc: Exception) -> bool:
+    """The session or driver is gone: stopped from Safari's banner, window closed, or driver dead."""
     name = type(exc).__name__
-    return name in {"InvalidSessionIdException", "NoSuchWindowException"} or (
-        name == "WebDriverException" and "session" in str(exc).casefold()
+    return (
+        name in {"InvalidSessionIdException", "NoSuchWindowException", "MaxRetryError", "ProtocolError"}
+        or isinstance(exc, (ConnectionError, TimeoutError))
+        or (name == "WebDriverException" and "session" in str(exc).casefold())
     )
 
 
@@ -44,6 +51,9 @@ class SafariBrowser:
             except Exception:
                 pass
         self.driver = driver
+        client = getattr(getattr(driver, "command_executor", None), "_client_config", None)
+        if client is not None:
+            client.timeout = _COMMAND_TIMEOUT_SECONDS
         self.driver.get(start_url)
         self._last_snapshot: Snapshot | None = None
 
@@ -51,6 +61,24 @@ class SafariBrowser:
         if self.driver is not None:
             self.driver.quit()
             self.driver = None
+
+    def alive(self) -> bool:
+        """A quick check that the session still answers; "Stop Session" can leave it hanging."""
+        if self.driver is None:
+            return False
+        result: list[bool] = []
+
+        def probe() -> None:
+            try:
+                self.driver.execute_script("return 1")
+                result.append(True)
+            except Exception:
+                result.append(False)
+
+        worker = threading.Thread(target=probe, daemon=True)
+        worker.start()
+        worker.join(_ALIVE_TIMEOUT_SECONDS)
+        return bool(result and result[0])
 
     def snapshot(self) -> Snapshot:
         try:

@@ -30,6 +30,13 @@ class Browser(Protocol):
     def close(self) -> None: ...
 
 
+def _close_quietly(browser: Browser) -> None:
+    try:
+        browser.close()
+    except Exception:
+        pass
+
+
 class ReconnectingBrowser:
     """Open the browser on first use and reopen it after the window or session is lost.
 
@@ -54,14 +61,21 @@ class ReconnectingBrowser:
                 self._browser = self._factory()
             return self._browser
 
+    def ensure_alive(self) -> Browser:
+        """Like `ensure`, but first replace a session that stopped answering (e.g. "Stop Session")."""
+        with self._lock:
+            alive = getattr(self._browser, "alive", None)
+            if self._browser is not None and alive is not None and not alive():
+                self._announce("the browser session stopped; opening a new one")
+                self._drop()
+            return self.ensure()
+
     def _drop(self) -> None:
         with self._lock:
             browser, self._browser = self._browser, None
         if browser is not None:
-            try:
-                browser.close()
-            except Exception:
-                pass
+            # Closing a dead session can itself hang; never make the user wait for it.
+            threading.Thread(target=_close_quietly, args=(browser,), daemon=True).start()
 
     def snapshot(self) -> Snapshot:
         try:

@@ -6,10 +6,13 @@ import os
 import plistlib
 import subprocess
 import sys
+import time
 from pathlib import Path
 
-LABEL = "dev.aryan.laya-voice-browser"
-APP_BUNDLE_ID = "dev.aryan.laya"
+LABEL = "dev.aryan.layabrowse"
+# Earlier names of this service, removed on install so two copies never run.
+LEGACY_LABELS = ("dev.aryan.laya-voice-browser",)
+APP_BUNDLE_ID = "dev.aryan.layabrowse"
 PASSED_ENVIRONMENT = (
     "LAYA_MODEL",
     "LAYA_DTYPE",
@@ -35,9 +38,9 @@ def _domain() -> str:
 
 
 def launch_agent(python: str | None = None, app: Path | None = None) -> dict:
-    """launchd runs the signed Laya app, which runs Python as its child.
+    """launchd runs the signed LayaBrowse app, which runs Python as its child.
 
-    Pointing launchd at the app (not at python) is what makes macOS show "Laya" in the background
+    Pointing launchd at the app (not at python) is what makes macOS show "LayaBrowse" in the background
     activity notice, Login Items and every permission prompt instead of "Python Software Foundation".
     """
     from .speech import app_binary
@@ -55,7 +58,7 @@ def launch_agent(python: str | None = None, app: Path | None = None) -> dict:
         "AssociatedBundleIdentifiers": [APP_BUNDLE_ID],
         "EnvironmentVariables": environment,
         "RunAtLoad": True,
-        # Restart after crashes, but not after "Quit Laya" from the menu bar (a clean exit).
+        # Restart after crashes, but not after "Quit LayaBrowse" from the menu bar (a clean exit).
         "KeepAlive": {"SuccessfulExit": False},
         "ThrottleInterval": 20,
         "ProcessType": "Interactive",
@@ -68,10 +71,26 @@ def _launchctl(*args: str) -> subprocess.CompletedProcess:
     return subprocess.run(["launchctl", *args], capture_output=True, text=True)
 
 
+def _loaded(label: str) -> bool:
+    return _launchctl("print", f"{_domain()}/{label}").returncode == 0
+
+
+def _stop_loaded(timeout: float = 10.0) -> None:
+    """Unload this service (and older names of it) and wait until launchd has really let go:
+    `bootout` returns before the old process has exited."""
+    for label in (LABEL, *LEGACY_LABELS):
+        _launchctl("bootout", f"{_domain()}/{label}")
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline and any(_loaded(label) for label in (LABEL, *LEGACY_LABELS)):
+        time.sleep(0.1)
+    for label in LEGACY_LABELS:
+        (plist_path().parent / f"{label}.plist").unlink(missing_ok=True)
+
+
 def install(*, prepare_model: bool = True) -> int:
     from .speech import build_native_helper
 
-    print("Building the Laya app…", flush=True)
+    print("Building LayaBrowse…", flush=True)
     build_native_helper()
     if prepare_model:
         from .laya import LayaEngine
@@ -83,15 +102,22 @@ def install(*, prepare_model: bool = True) -> int:
     plist_path().parent.mkdir(parents=True, exist_ok=True)
     with plist_path().open("wb") as handle:
         plistlib.dump(launch_agent(), handle)
-    _launchctl("bootout", f"{_domain()}/{LABEL}")
+    _stop_loaded()
     result = _launchctl("bootstrap", _domain(), str(plist_path()))
+    for _ in range(10):
+        # launchd can still be unloading the previous copy ("Bootstrap failed: 5"); give it a moment.
+        if result.returncode == 0:
+            break
+        time.sleep(0.5)
+        result = _launchctl("bootstrap", _domain(), str(plist_path()))
     if result.returncode != 0:
         print(f"launchctl could not start the service: {result.stderr.strip()}", file=sys.stderr)
         return 2
     print(
-        "Installed. Laya now runs in the background and starts at login.\n"
-        "macOS will ask to allow Laya for the microphone, speech recognition, Input Monitoring and\n"
-        "Accessibility (turn Laya on in the list that opens). The menu-bar icon shows anything missing.\n"
+        "Installed. LayaBrowse now runs in the background and starts at login.\n"
+        "macOS will ask to allow LayaBrowse for the microphone, speech recognition, Input Monitoring and\n"
+        "Accessibility (turn LayaBrowse on in the list that opens). The menu-bar icon shows anything\n"
+        "missing.\n"
         "Then double-tap left Control anywhere to talk.\n"
         f"Logs: {log_path()}",
         flush=True,
@@ -100,7 +126,7 @@ def install(*, prepare_model: bool = True) -> int:
 
 
 def uninstall() -> int:
-    _launchctl("bootout", f"{_domain()}/{LABEL}")
+    _stop_loaded()
     plist_path().unlink(missing_ok=True)
     print("Removed the background service. Your model cache and logs were left in place.")
     return 0
@@ -108,7 +134,7 @@ def uninstall() -> int:
 
 def status() -> int:
     if not plist_path().exists():
-        print("Not installed. Run: laya-voice-browser install")
+        print("Not installed. Run: layabrowse install")
         return 1
     result = _launchctl("print", f"{_domain()}/{LABEL}")
     running = "state = running" in result.stdout

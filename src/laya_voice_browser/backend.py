@@ -1,4 +1,4 @@
-"""The Python half of the Laya app: the menu-bar app starts this as a child process.
+"""The Python half of LayaBrowse: the menu-bar app starts this as a child process.
 
 stdin:  JSON lines from the app: transcripts, and events such as {"event": "voice_on"}
 stdout: JSON status lines for the notch island (nothing else may be printed there)
@@ -86,7 +86,7 @@ def run(model: str | None = None, trace: Path | None = None) -> int:
                         at=float(raw.get("at", time.time())),
                     )
                 )
-        log("the Laya app closed the connection")
+        log("the LayaBrowse app closed the connection")
         return 0
     except KeyboardInterrupt:
         return 0

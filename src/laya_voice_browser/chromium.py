@@ -1,6 +1,6 @@
 """Chrome, Edge, Brave, Opera and other Chromium browsers over the Chrome DevTools Protocol.
 
-Laya runs its own browser window with a dedicated profile (sign in once, it stays signed in):
+LayaBrowse runs its own browser window with a dedicated profile (sign in once, it stays signed in):
 Chromium refuses remote debugging on the everyday default profile. Clicks and keys are sent as
 real input events, so pages treat them like a person's, unlike WebDriver or extension scripts.
 """
@@ -131,7 +131,7 @@ class CDPConnection:
 
 
 class ChromiumBrowser:
-    """Controls the tab you are looking at in Laya's Chromium window."""
+    """Controls the tab you are looking at in LayaBrowse's Chromium window."""
 
     def __init__(self, app: ChromiumApp, *, connection: CDPConnection | None = None) -> None:
         self.app = app
@@ -155,7 +155,7 @@ class ChromiumBrowser:
             raise RuntimeError(f"{self.app.name} is not installed")
         profile.mkdir(parents=True, exist_ok=True)
         (profile / "DevToolsActivePort").unlink(missing_ok=True)
-        # `open -n` starts a separate instance on Laya's profile next to your everyday browser.
+        # `open -n` starts a separate instance on LayaBrowse's profile next to your everyday browser.
         subprocess.run(["open", "-na", str(path), "--args", *launch_arguments(self.app)], check=True)
         deadline = time.monotonic() + LAUNCH_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
@@ -173,6 +173,13 @@ class ChromiumBrowser:
     def close(self) -> None:
         # Leave the window open: it is the user's browser, only our connection goes away.
         self._cdp.close()
+
+    def alive(self) -> bool:
+        try:
+            self._cdp.call("Target.getTargets", timeout=2)
+            return True
+        except Exception:
+            return False
 
     # -- pages ------------------------------------------------------------------------------------
 

@@ -145,7 +145,7 @@ final class SpeechController {
         menuBar?.setListening(true)
         Output.signal("voice_on")
         log("voice control on")
-        if settings.sounds { NSSound.beep() }
+        if settings.sounds { Chime.playStart() }
         startSegment()
     }
 
@@ -162,7 +162,7 @@ final class SpeechController {
             cleanupSegment(cancelTask: true)
         }
         log("voice control off")
-        if settings.sounds { NSSound.beep() }
+        if settings.sounds { Chime.playStop() }
     }
 
     private func startSegment() {
@@ -175,7 +175,7 @@ final class SpeechController {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.contextualStrings = [
-            "Laya", "GitHub", "GitHub.com", "YouTube", "Wikipedia", "DuckDuckGo", "Safari", "Chrome",
+            "Laya", "LayaBrowse", "GitHub", "GitHub.com", "YouTube", "Wikipedia", "DuckDuckGo", "Safari", "Chrome",
         ]
         if recognizer.supportsOnDeviceRecognition {
             request.requiresOnDeviceRecognition = true

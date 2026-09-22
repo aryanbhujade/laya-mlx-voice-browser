@@ -1,4 +1,4 @@
-"""User settings shared with the Laya menu-bar app (which writes them) and this backend (which reads them).
+"""Settings shared by the LayaBrowse menu-bar app (which writes them) and the backend (which reads them).
 
 `~/Library/Application Support/laya-voice-browser/config.json`; `LAYA_CONFIG` overrides the path.
 """

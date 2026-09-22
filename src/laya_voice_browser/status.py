@@ -59,7 +59,7 @@ class StatusChannel:
 
 
 class PipeStatus:
-    """Status lines on stdout for the Laya app, when it runs this backend as its child process."""
+    """Status lines on stdout for the LayaBrowse app, when it runs this backend as its child process."""
 
     def __init__(self, stream: TextIO | None = None) -> None:
         self._stream = stream or sys.stdout

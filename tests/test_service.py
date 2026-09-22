@@ -11,11 +11,11 @@ from laya_voice_browser.types import Snapshot
 
 def test_launch_agent_restarts_after_crashes_but_not_after_quit(monkeypatch):
     monkeypatch.setenv("LAYA_MODEL", "local/checkpoint")
-    agent = service.launch_agent("/venv/bin/python", app=Path("/x/Laya.app/Contents/MacOS/Laya"))
-    # launchd runs the Laya app (so macOS names it "Laya"), which runs Python as a child.
-    assert agent["ProgramArguments"] == ["/x/Laya.app/Contents/MacOS/Laya", "--service"]
+    agent = service.launch_agent("/venv/bin/python", app=Path("/x/LayaBrowse.app/Contents/MacOS/LayaBrowse"))
+    # launchd runs the app (so macOS names it "LayaBrowse"), which runs Python as a child.
+    assert agent["ProgramArguments"] == ["/x/LayaBrowse.app/Contents/MacOS/LayaBrowse", "--service"]
     assert agent["EnvironmentVariables"]["LAYA_PYTHON"] == "/venv/bin/python"
-    assert agent["AssociatedBundleIdentifiers"] == ["dev.aryan.laya"]
+    assert agent["AssociatedBundleIdentifiers"] == ["dev.aryan.layabrowse"]
     assert agent["RunAtLoad"] is True
     assert agent["KeepAlive"] == {"SuccessfulExit": False}
     assert agent["EnvironmentVariables"]["LAYA_MODEL"] == "local/checkpoint"
@@ -93,3 +93,59 @@ def test_prepare_browser_opens_it_once_in_the_background():
     controller.wait_idle()
     controller.close()
     assert opened.is_set() and browser.open
+
+
+def test_double_tap_replaces_a_stopped_session():
+    """Safari's "Stop Session" leaves a session object that no longer answers."""
+    made = []
+
+    class Stoppable(FlakyBrowser):
+        def __init__(self, name):
+            super().__init__(name)
+            self.stopped = False
+
+        def alive(self):
+            return not self.stopped
+
+    def factory():
+        made.append(Stoppable(f"b{len(made)}"))
+        return made[-1]
+
+    browser = ReconnectingBrowser(factory, announce=lambda _: None)
+    browser.ensure_alive()
+    made[0].stopped = True  # the user pressed "Stop Session"
+    browser.ensure_alive()
+    assert len(made) == 2 and browser.snapshot().title == "b1"
+
+
+def test_install_waits_for_launchd_to_let_go_of_the_old_service(monkeypatch, tmp_path):
+    calls = []
+    loaded = {"dev.aryan.laya-voice-browser": 3, service.LABEL: 0}
+    attempts = {"bootstrap": 0}
+
+    class Result:
+        def __init__(self, code, stderr=""):
+            self.returncode, self.stderr, self.stdout = code, stderr, ""
+
+    def fake_launchctl(*args):
+        calls.append(args)
+        if args[0] == "print":
+            label = args[1].split("/")[-1]
+            loaded[label] = max(0, loaded.get(label, 0) - 1)
+            return Result(0 if loaded[label] else 113)
+        if args[0] == "bootstrap":
+            attempts["bootstrap"] += 1
+            busy = attempts["bootstrap"] == 1
+            return Result(5, "Bootstrap failed: 5: Input/output error") if busy else Result(0)
+        return Result(0)
+
+    monkeypatch.setattr(service, "_launchctl", fake_launchctl)
+    monkeypatch.setattr(service, "plist_path", lambda: tmp_path / "LaunchAgents" / f"{service.LABEL}.plist")
+    monkeypatch.setattr(service, "log_path", lambda: tmp_path / "Logs" / "service.log")
+    monkeypatch.setattr(service.time, "sleep", lambda _: None)
+    import laya_voice_browser.speech as speech
+
+    monkeypatch.setattr(speech, "build_native_helper", lambda root=None: None)
+    assert service.install(prepare_model=False) == 0
+    assert ("bootout", f"gui/{service.os.getuid()}/dev.aryan.laya-voice-browser") in calls
+    assert attempts["bootstrap"] == 2  # the transient error 5 was retried

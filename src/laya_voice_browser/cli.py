@@ -15,7 +15,7 @@ from .types import TranscriptEvent
 
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(
-        prog="laya-voice-browser",
+        prog="layabrowse",
         description=(
             "Control Safari from partial speech using local Laya-MLX decisions. "
             "Background service: install | uninstall | status | logs | daemon."
@@ -38,7 +38,7 @@ SERVICE_COMMANDS = {"backend", "daemon", "install", "uninstall", "status", "logs
 def service_main(command: str, rest: list[str]) -> int:
     from . import daemon, service
 
-    options = argparse.ArgumentParser(prog=f"laya-voice-browser {command}")
+    options = argparse.ArgumentParser(prog=f"layabrowse {command}")
     if command == "backend":
         from . import backend
 

@@ -422,9 +422,10 @@ class StreamingController:
         self._trace({"execution": item})
 
     def prepare_browser(self) -> None:
-        """Open the browser ahead of the first command (e.g. when voice control turns on)."""
-        ensure = getattr(self.browser, "ensure", None)
-        if ensure and not getattr(self.browser, "open", True):
+        """Have a working browser ready before the first command (e.g. when voice control turns on):
+        open one if there is none, and replace one whose session was stopped or closed."""
+        ensure = getattr(self.browser, "ensure_alive", None) or getattr(self.browser, "ensure", None)
+        if ensure:
             self._submit_job(self._prepare_browser, ensure)
 
     def _prepare_browser(self, ensure: Callable[[], Any]) -> None:

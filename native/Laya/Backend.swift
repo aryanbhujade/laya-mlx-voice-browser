@@ -27,13 +27,13 @@ enum Output {
 }
 
 func log(_ message: String) {
-    fputs("laya: \(message)\n", stderr)
+    fputs("layabrowse: \(message)\n", stderr)
     fflush(stderr)
 }
 
 /// Runs `python -m laya_voice_browser backend` as our child and restarts it if it crashes.
 /// Transcripts go to its stdin; its stdout carries status lines for the island; its stderr is
-/// our log. Being the parent is what makes macOS attribute everything to "Laya".
+/// our log. Being the parent is what makes macOS attribute everything to "LayaBrowse".
 final class BackendProcess {
     private let python: String
     private let island: NotchIsland

@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import Speech
 
-// Laya: the menu-bar app. Installed as a login item it runs the Python backend as its child
+// LayaBrowse: the menu-bar app. Installed as a login item it runs the Python backend as its child
 // (`--service`); in development the Python process launches it as a helper instead.
 
 signal(SIGPIPE, SIG_IGN)
@@ -34,7 +34,7 @@ var terminationSource: DispatchSourceSignal?
 
 if serviceMode {
     guard let python = environment["LAYA_PYTHON"] else {
-        log("LAYA_PYTHON is not set; reinstall with `laya-voice-browser install`")
+        log("LAYA_PYTHON is not set; reinstall with `layabrowse install`")
         exit(1)
     }
     let process = BackendProcess(python: python, island: island)

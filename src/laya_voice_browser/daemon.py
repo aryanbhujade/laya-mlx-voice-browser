@@ -1,6 +1,6 @@
-"""Run the service in a terminal (development): this process starts the Laya app as a helper.
+"""Run the service in a terminal (development): this process starts the LayaBrowse app as a helper.
 
-The installed service is the other way round: the Laya app starts `laya-voice-browser backend`.
+The installed service is the other way round: the LayaBrowse app starts `layabrowse backend`.
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ def _terminate(*_: object) -> None:
 
 def run(model: str | None = None, trace: Path | None = None) -> int:
     signal.signal(signal.SIGTERM, _terminate)
-    log("starting Laya voice browser service")
+    log("starting LayaBrowse")
     engine = LayaEngine(model)
     try:
         engine.warm()

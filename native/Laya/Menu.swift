@@ -38,7 +38,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         } else {
             symbol = listening ? "waveform.circle.fill" : "waveform"
         }
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "Laya")
+        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "LayaBrowse")
         image?.isTemplate = true
         item.button?.image = image
     }
@@ -48,13 +48,13 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
         refreshIcon()
-        menu.addItem(disabled("Laya Voice Browser"))
+        menu.addItem(disabled("LayaBrowse"))
         menu.addItem(disabled("Double-tap \(settings.hotkeyOption.title) to talk"))
 
         let missing = Permission.missing
         if !missing.isEmpty {
             menu.addItem(.separator())
-            menu.addItem(disabled("Laya needs permission:"))
+            menu.addItem(disabled("LayaBrowse needs permission:"))
             for permission in missing {
                 menu.addItem(action("⚠︎  Allow \(permission.title)…") {
                     permission.request { permission.openSettings() }
@@ -110,7 +110,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         if FileManager.default.fileExists(atPath: logURL.path) {
             menu.addItem(action("Open Log") { NSWorkspace.shared.open(logURL) })
         }
-        let quit = action("Quit Laya") { [weak self] in self?.onQuit() }
+        let quit = action("Quit LayaBrowse") { [weak self] in self?.onQuit() }
         quit.keyEquivalent = "q"
         menu.addItem(quit)
     }

@@ -23,11 +23,11 @@ def project_root() -> Path:
 
 
 def app_bundle(root: Path | None = None) -> Path:
-    return (root or project_root()) / ".build" / "Laya.app"
+    return (root or project_root()) / ".build" / "LayaBrowse.app"
 
 
 def app_binary(root: Path | None = None) -> Path:
-    return app_bundle(root) / "Contents" / "MacOS" / "Laya"
+    return app_bundle(root) / "Contents" / "MacOS" / "LayaBrowse"
 
 
 def build_native_helper(root: Path | None = None) -> Path:
@@ -46,7 +46,7 @@ def native_events(
     status_port: int | None = None,
     on_signal: Callable[[str], None] | None = None,
 ) -> Iterator[TranscriptEvent]:
-    """Transcripts from the Laya app; `on_signal` receives events such as "voice_on"."""
+    """Transcripts from the LayaBrowse app; `on_signal` receives events such as "voice_on"."""
     root = root or project_root()
     app = app_bundle(root)
     if not app_binary(root).is_file():
@@ -91,7 +91,7 @@ def native_events(
             time.sleep(0.05)
         if helper_pid is None:
             details = stderr_path.read_text(encoding="utf-8").strip()
-            raise RuntimeError(details or "The Laya app did not report ready within 5 seconds")
+            raise RuntimeError(details or "LayaBrowse did not report ready within 5 seconds")
         with stdout_path.open("r", encoding="utf-8") as output:
             while True:
                 line = output.readline()
@@ -116,7 +116,7 @@ def native_events(
         details = stderr_path.read_text(encoding="utf-8").strip()
         if "quit requested" in details:
             raise HelperQuit("Quit from the menu bar")
-        raise RuntimeError(details or "The Laya app exited unexpectedly")
+        raise RuntimeError(details or "LayaBrowse exited unexpectedly")
     finally:
         if helper_pid:
             try:
