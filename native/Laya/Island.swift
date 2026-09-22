@@ -294,7 +294,7 @@ final class IslandView: NSView {
 
     private func startFrames() {
         guard frameTimer == nil else { return }
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
+        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in self?.tick() }
         RunLoop.main.add(timer, forMode: .common)
         frameTimer = timer
     }
@@ -304,10 +304,11 @@ final class IslandView: NSView {
         frameTimer = nil
     }
 
-    /// Voice-reactive bars while listening; a slow travelling wave while working.
+    /// Voice-reactive bars while listening; a slow travelling wave while working. 30 fps is smooth for
+    /// level bars and costs half the CPU of 60.
     private func tick() {
-        phase += 1.0 / 60.0
-        let smoothing: CGFloat = targetLevel > level ? 0.45 : 0.12
+        phase += 1.0 / 30.0
+        let smoothing: CGFloat = targetLevel > level ? 0.7 : 0.22
         level += (targetLevel - level) * smoothing
         let maxHeight = bounds.height - 16
         let weights: [CGFloat] = [0.55, 0.85, 1.0, 0.8, 0.5]

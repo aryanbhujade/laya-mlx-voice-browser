@@ -8,9 +8,11 @@ stderr: the log
 from __future__ import annotations
 
 import json
+import os
 import signal
 import sys
 import time
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -45,6 +47,22 @@ class SettingsBrowser(ReconnectingBrowser):
             self.close()
 
 
+LOG_LIMIT_BYTES = 4 * 1024 * 1024
+
+
+def _trim_log() -> None:
+    """Keep the service log small: past the limit, keep only its most recent quarter."""
+    from .service import log_path
+
+    path = log_path()
+    try:
+        if path.stat().st_size > LOG_LIMIT_BYTES:
+            recent = path.read_bytes()[-LOG_LIMIT_BYTES // 4 :]
+            path.write_bytes(recent[recent.find(b"\n") + 1 :])
+    except OSError:
+        pass
+
+
 def _terminate(*_: object) -> None:
     raise SystemExit(0)
 
@@ -54,6 +72,9 @@ def run(model: str | None = None, trace: Path | None = None) -> int:
     # stdout carries only status lines for the app; anything a library prints goes to the log.
     status_stream = sys.stdout
     sys.stdout = sys.stderr
+    _trim_log()
+    os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+    warnings.filterwarnings("ignore", message=".*temperatures outside.*")
     log("backend starting")
     engine = LayaEngine(model)
     try:
