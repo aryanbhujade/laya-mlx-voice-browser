@@ -84,7 +84,12 @@ you can manage it in **System Settings ▸ General ▸ Login Items**.
 | "type hello world into the search box", "press enter" | Types exactly what you said |
 | "scroll down a little", "scroll to the bottom" | Scrolls |
 | "go back", "go forward", "reload" | History |
-| "open a new tab", "next tab", "close this tab" | Tabs |
+| "open a new tab", "open youtube in a new tab" | Opens tabs |
+| "switch to the YouTube tab", "tab 3", "the last tab", "next tab" | Switches tabs by name, position or direction |
+| "close the Wikipedia tab", "close this tab", "close the other tabs" | Closes tabs (closing all the others asks to confirm) |
+| "pause", "play", "mute", "unmute", "volume up" | Controls the video or audio on the page |
+| "skip ahead 30 seconds", "rewind", "speed up", "play at 1.5x", "full screen", "turn on captions" | More playback control |
+| "next video", "scroll to the next video", "skip the ad" | Next YouTube video or Short, the next video in a feed, or YouTube's Skip Ad |
 | "two", "the second one" | Picks a numbered badge |
 | "confirm" / "cancel" | Answers a confirmation |
 

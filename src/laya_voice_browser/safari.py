@@ -5,11 +5,11 @@ import threading
 import time
 from typing import Any
 
-from .browser import BrowserSessionLost, StalePage
-from .page import CANDIDATES_JS, SNAPSHOT_JS, decision_still_valid, snapshot_from_raw
+from .browser import BrowserSessionLost, NoMedia, StalePage, pick_tab
+from .page import CANDIDATES_JS, MEDIA_JS, SNAPSHOT_JS, decision_still_valid, snapshot_from_raw
 from .questions import MAX_OBSERVED_ELEMENTS
 from .safety import deterministic_destructive
-from .types import Snapshot
+from .types import Snapshot, Tab
 
 __all__ = ["BrowserSessionLost", "SafariBrowser", "StalePage", "deterministic_destructive"]
 
@@ -56,6 +56,8 @@ class SafariBrowser:
             client.timeout = _COMMAND_TIMEOUT_SECONDS
         self.driver.get(start_url)
         self._last_snapshot: Snapshot | None = None
+        # WebDriver can only read the current tab's title, so remember each tab's as it is visited.
+        self._tab_titles: dict[str, tuple[str, str]] = {}
 
     def close(self) -> None:
         if self.driver is not None:
@@ -87,9 +89,17 @@ class SafariBrowser:
             if _session_lost(exc):
                 raise BrowserSessionLost("The Safari automation window is gone") from exc
             raise
-        snapshot = snapshot_from_raw(raw)
+        snapshot = snapshot_from_raw(raw, tabs=self._tabs(raw))
         self._last_snapshot = snapshot
         return snapshot
+
+    def _tabs(self, raw: dict[str, Any]) -> tuple[Tab, ...]:
+        current = self.driver.current_window_handle
+        self._tab_titles[current] = (str(raw.get("title", "")), str(raw.get("url", "")))
+        return tuple(
+            Tab(handle, *self._tab_titles.get(handle, ("", "")), active=handle == current)
+            for handle in self.driver.window_handles
+        )
 
     def _element(self, element_id: str):
         from selenium.webdriver.common.by import By
@@ -177,19 +187,37 @@ class SafariBrowser:
             self.driver.forward()
         elif kind == "reload":
             self.driver.refresh()
+        elif kind == "media":
+            done = self.driver.execute_script(MEDIA_JS, action["command"], action.get("amount"))
+            if not done:
+                raise NoMedia(f"nothing on this page can {action['command'].replace('_', ' ')}")
+            if done.get("press"):
+                self.driver.execute_script("document.querySelector('[data-laya-press]')?.click()")
         elif kind == "new_tab":
             self.driver.switch_to.new_window("tab")
         elif kind == "close_tab":
-            if len(self.driver.window_handles) <= 1:
+            handles = self.driver.window_handles
+            if len(handles) <= 1:
                 raise RuntimeError("Refusing to close Safari's only controlled tab")
+            current = self.driver.current_window_handle
+            victim = pick_tab(handles, current, action)
+            self.driver.switch_to.window(victim)
             self.driver.close()
-            self.driver.switch_to.window(self.driver.window_handles[-1])
+            self._tab_titles.pop(victim, None)
+            remaining = [handle for handle in handles if handle != victim]
+            self.driver.switch_to.window(current if current in remaining else remaining[-1])
+        elif kind == "close_other_tabs":
+            current = self.driver.current_window_handle
+            for handle in self.driver.window_handles:
+                if handle != current:
+                    self.driver.switch_to.window(handle)
+                    self.driver.close()
+                    self._tab_titles.pop(handle, None)
+            self.driver.switch_to.window(current)
         elif kind == "switch_tab":
             handles = self.driver.window_handles
-            current = handles.index(self.driver.current_window_handle)
-            direction = action.get("direction", "next")
-            target = 0 if direction == "first" else (current + (-1 if direction == "previous" else 1)) % len(handles)
-            self.driver.switch_to.window(handles[target])
+            current = self.driver.current_window_handle
+            self.driver.switch_to.window(pick_tab(handles, current, {"direction": "next", **action}))
         elif kind == "select":
             from selenium.webdriver.support.ui import Select
 

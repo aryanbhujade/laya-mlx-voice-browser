@@ -24,12 +24,21 @@ class Element:
 
 
 @dataclass(frozen=True)
+class Tab:
+    id: str
+    title: str
+    url: str
+    active: bool = False
+
+
+@dataclass(frozen=True)
 class Snapshot:
     url: str
     title: str
     text: str
     elements: tuple[Element, ...]
     fingerprint: str
+    tabs: tuple[Tab, ...] = ()
 
 
 @dataclass(frozen=True)

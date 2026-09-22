@@ -109,3 +109,28 @@ def test_a_slow_page_is_not_mistaken_for_a_closed_browser():
     connection._next_id = 0
     with pytest.raises(TimeoutError):
         connection.call("Runtime.evaluate", {}, timeout=0.01)
+
+
+def test_tabs_keep_the_order_you_see():
+    class TabsCDP(FakeCDP):
+        def __init__(self):
+            super().__init__()
+            self.targets = []
+
+        def call(self, method, params=None, *, session=None, timeout=15.0):
+            if method == "Target.getTargets":
+                return {"targetInfos": list(self.targets)}
+            return super().call(method, params, session=session, timeout=timeout)
+
+    cdp = TabsCDP()
+    browser = ChromiumBrowser(CHROME, connection=cdp)
+
+    def page(tab_id, opener=None):
+        return {"targetId": tab_id, "type": "page", "url": "https://x", "openerId": opener}
+
+    cdp.targets = [page("A")]
+    browser._pages()
+    cdp.targets = [page("B"), page("A")]  # DevTools lists newest first
+    browser._pages()
+    cdp.targets = [page("C", opener="A"), page("B"), page("A")]  # a link opened from A
+    assert [p["targetId"] for p in browser._pages()] == ["A", "C", "B"]

@@ -7,8 +7,28 @@ from typing import Any, Protocol
 from .types import Snapshot
 
 
+def pick_tab(ids: list[str], current: str, action: dict[str, Any]) -> str:
+    """The tab an action refers to: an explicit id, a direction relative to the current tab, or the
+    current tab itself."""
+    if action.get("tab_id") in ids:
+        return action["tab_id"]
+    here = ids.index(current) if current in ids else 0
+    direction = action.get("direction")
+    if direction == "first":
+        return ids[0]
+    if direction == "last":
+        return ids[-1]
+    if direction in {"next", "previous"}:
+        return ids[(here + (1 if direction == "next" else -1)) % len(ids)]
+    return current
+
+
 class StalePage(RuntimeError):
     """The page changed after the decision; the action was not executed."""
+
+
+class NoMedia(RuntimeError):
+    """A media command on a page with no video or audio to control."""
 
 
 class BrowserSessionLost(RuntimeError):

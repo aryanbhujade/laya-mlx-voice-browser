@@ -7,7 +7,7 @@ import hashlib
 import json
 from typing import Any
 
-from .types import Element, Snapshot
+from .types import Element, Snapshot, Tab
 
 SNAPSHOT_JS = r"""
 const destructive = /\b(buy|purchase|pay|place order|delete|remove|send|submit|publish|confirm|sign in|log in)\b/i;
@@ -74,12 +74,104 @@ scrollBy(0, (direction === 'up' ? -1 : 1) * pixels);
 """
 
 
+# Controls the page's main video or audio: the one playing, otherwise the largest on screen. On
+# YouTube it presses YouTube's own buttons where they exist, so the player's controls stay in sync.
+MEDIA_JS = r"""
+const [command, amount] = arguments;
+const youtube = /(^|\.)youtube\.com$/.test(location.hostname);
+const shorts = youtube && location.pathname.startsWith('/shorts');
+// Buttons are not clicked here: they are tagged, and the browser presses them with a real click,
+// which players such as YouTube require before they will start.
+let press = false;
+document.querySelectorAll('[data-laya-press]').forEach((el) => el.removeAttribute('data-laya-press'));
+const tag = (...selectors) => {
+  for (const selector of selectors) {
+    const el = document.querySelector(selector);
+    if (el && el.getClientRects().length) { el.setAttribute('data-laya-press', '1'); press = true; return true; }
+  }
+  return false;
+};
+const done = (result) => (result ? {result, press} : null);
+const area = (m) => { const r = m.getBoundingClientRect(); return Math.max(0, r.width) * Math.max(0, r.height); };
+// Every player counts (a video may not have started loading): playing first, then loaded, then largest.
+const players = [...document.querySelectorAll('video, audio')];
+const loaded = (m) => (m.currentSrc || m.src ? 1 : 0);
+players.sort((a, b) => (a.paused - b.paused) || (loaded(b) - loaded(a)) || (area(b) - area(a)));
+const m = players[0];
+if (command === 'skip_ad') {
+  return done(tag('.ytp-skip-ad-button', '.ytp-ad-skip-button-modern', '.ytp-ad-skip-button') && 'skipped the ad');
+}
+if (command === 'next' || command === 'previous') {
+  const down = command === 'next';
+  if (shorts && tag(down ? '#navigation-button-down button' : '#navigation-button-up button')) {
+    return done(down ? 'next short' : 'previous short');
+  }
+  if (youtube && down && tag('.ytp-next-button', 'ytd-compact-video-renderer a#thumbnail',
+                             'yt-lockup-view-model a', '#related a#thumbnail')) return done('next video');
+  if (youtube && !down && tag('.ytp-prev-button')) return done('previous video');
+  // Feeds (Reddit, X, Instagram…): bring the next video below, or the one above, to the middle.
+  const middle = innerHeight / 2;
+  const boxes = players.map((p) => [p, p.getBoundingClientRect()]).filter(([, r]) => r.height > 40);
+  const pick = down
+    ? boxes.filter(([, r]) => r.top > middle).sort((a, b) => a[1].top - b[1].top)[0]
+    : boxes.filter(([, r]) => r.bottom < middle).sort((a, b) => b[1].top - a[1].top)[0];
+  if (!pick) return null;
+  pick[0].scrollIntoView({block: 'center', behavior: 'smooth'});
+  return done(down ? 'next video' : 'previous video');
+}
+if (command === 'fullscreen') {
+  if (youtube && !document.fullscreenElement && tag('.ytp-fullscreen-button')) return done('full screen');
+  if (m && m.requestFullscreen) { m.requestFullscreen(); return done('full screen'); }
+  return null;
+}
+if (command === 'exit_fullscreen') {
+  if (document.fullscreenElement) { document.exitFullscreen(); return done('left full screen'); }
+  return done('not in full screen');
+}
+if (command === 'captions_on' || command === 'captions_off') {
+  const on = command === 'captions_on';
+  const button = document.querySelector('.ytp-subtitles-button');
+  if (youtube && button) {
+    if ((button.getAttribute('aria-pressed') === 'true') !== on) tag('.ytp-subtitles-button');
+    return done(on ? 'captions on' : 'captions off');
+  }
+  if (!m || !m.textTracks || !m.textTracks.length) return null;
+  for (const track of m.textTracks) track.mode = on ? 'showing' : 'hidden';
+  return done(on ? 'captions on' : 'captions off');
+}
+if (!m) return null;
+switch (command) {
+  case 'pause':
+    if (youtube && !m.paused && tag('.ytp-play-button')) return done('paused');
+    m.pause(); return done('paused');
+  case 'play':
+    if (youtube && m.paused && tag('.ytp-large-play-button', '.ytp-play-button')) return done('playing');
+    { const p = m.play(); if (p) p.catch(() => {}); } return done('playing');
+  case 'mute':
+    if (youtube && !m.muted && tag('.ytp-mute-button')) return done('muted');
+    m.muted = true; return done('muted');
+  case 'unmute':
+    if (youtube && m.muted && tag('.ytp-mute-button')) return done('unmuted');
+    m.muted = false; if (m.volume === 0) m.volume = 0.5; return done('unmuted');
+  case 'volume_up': m.muted = false; m.volume = Math.min(1, m.volume + 0.15); return done('volume up');
+  case 'volume_down': m.volume = Math.max(0, m.volume - 0.15); return done('volume down');
+  case 'forward': m.currentTime = Math.min(m.duration || Infinity, m.currentTime + (amount || 10)); return done('skipped ahead');
+  case 'back': m.currentTime = Math.max(0, m.currentTime - (amount || 10)); return done('rewound');
+  case 'faster': m.playbackRate = Math.min(4, m.playbackRate + 0.25); return done('faster');
+  case 'slower': m.playbackRate = Math.max(0.25, m.playbackRate - 0.25); return done('slower');
+  case 'normal_speed': m.playbackRate = 1; return done('normal speed');
+  case 'rate': m.playbackRate = amount; return done('speed set');
+}
+return null;
+"""
+
+
 def call_script(script: str, *args: Any) -> str:
     """Wrap a script that reads `arguments` so it can run as a plain expression (CDP, extensions)."""
     return f"(function(){{{script}}}).apply(null, {json.dumps(list(args))})"
 
 
-def snapshot_from_raw(raw: dict[str, Any]) -> Snapshot:
+def snapshot_from_raw(raw: dict[str, Any], *, tabs: tuple[Tab, ...] = ()) -> Snapshot:
     elements = tuple(
         Element(
             id=str(item.get("id", "")),
@@ -107,6 +199,7 @@ def snapshot_from_raw(raw: dict[str, Any]) -> Snapshot:
         text=str(raw.get("text", "")),
         elements=elements,
         fingerprint=hashlib.sha256(json.dumps(compact, sort_keys=True).encode()).hexdigest(),
+        tabs=tabs,
     )
 
 

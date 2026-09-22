@@ -16,20 +16,25 @@ from .questions import (
 )
 from .safety import deterministic_destructive, ordinary_navigation_link
 from .spans import (
+    INSTANT_MEDIA,
     as_https,
     deterministic_intent,
     explicit_browser_command,
     explicit_payload,
+    media_command,
     mentioned_site,
     site_for_url,
     spoken_scroll_amount,
     spoken_tab_direction,
+    tab_command,
 )
-from .types import ModelDecision, PolicyResult, Snapshot
+from .types import ModelDecision, PolicyResult, Snapshot, Tab
 
 # Intents whose words describe *what* to act on, so they wait for the end of the phrase: a search
 # query, dictated text, or the element to click ("click create…" must not click "Create" early).
-_PAYLOAD_INTENTS = {"search_web", "type_into_field", "select_option", "click_element"}
+_PAYLOAD_INTENTS = {
+    "search_web", "type_into_field", "select_option", "click_element", "switch_tab", "close_tab",
+}
 # Only these act on page content; navigation, history, scroll and tabs cannot submit or change anything.
 _PAGE_ACTIONS = {"click", "type", "select", "press_enter"}
 # Explicit commands no further words can change or make dangerous, so they may run mid-speech.
@@ -151,6 +156,13 @@ def _build_action(intent: str, decision: ModelDecision, snapshot: Snapshot) -> t
         return {"type": "reload"}, "reload"
     if intent == "open_new_tab":
         return {"type": "new_tab"}, "open a new tab"
+    if intent == "media":
+        media = media_command(transcript)
+        if not media:
+            return None, "no media command"
+        return {"type": "media", **media}, MEDIA_SUMMARIES.get(media["command"], media["command"])
+    if intent in {"close_tab", "switch_tab"} and tab_command(transcript):
+        return _tab_action(tab_command(transcript), snapshot)
     if intent == "close_tab":
         return {"type": "close_tab"}, "close the tab"
     if intent == "switch_tab":
@@ -162,6 +174,54 @@ def _build_action(intent: str, decision: ModelDecision, snapshot: Snapshot) -> t
 
 
 _AMBIGUOUS = "the page target is ambiguous"
+MEDIA_SUMMARIES = {
+    "pause": "pause", "play": "play", "mute": "mute", "unmute": "unmute", "volume_up": "volume up",
+    "volume_down": "volume down", "forward": "skip ahead", "back": "rewind", "faster": "speed up",
+    "slower": "slow down", "normal_speed": "normal speed", "rate": "set the speed",
+    "fullscreen": "full screen", "exit_fullscreen": "exit full screen", "captions_on": "captions on",
+    "captions_off": "captions off", "next": "next video", "previous": "previous video",
+    "skip_ad": "skip the ad",
+}
+_TAB_WORD = re.compile(r"[a-z0-9]+")
+
+
+def _tab_words(tab: Tab) -> set[str]:
+    host = urlparse(tab.url).hostname or ""
+    return set(_TAB_WORD.findall(f"{tab.title} {host}".casefold()))
+
+
+def _tab_action(command: dict, snapshot: Snapshot) -> tuple[dict | None, str]:
+    """Turn "close the YouTube tab", "tab 3", "next tab" … into an action on a specific tab."""
+    kind, tabs = command["kind"], snapshot.tabs
+    if kind == "close_other_tabs":
+        return {"type": "close_other_tabs"}, "close the other tabs"
+    verb = "close" if kind == "close_tab" else "switch to"
+    if command.get("current") or (kind == "close_tab" and len(command) == 1):
+        if kind == "switch_tab":
+            return None, "already on this tab"
+        return {"type": "close_tab"}, "close this tab"
+    if "direction" in command:
+        direction = command["direction"]
+        return {"type": kind, "direction": direction}, f"{verb} the {direction} tab"
+    if not tabs:
+        return None, "the open tabs are not known yet"
+    if "index" in command:
+        if not 1 <= command["index"] <= len(tabs):
+            return None, f"there is no tab {command['index']} ({len(tabs)} open)"
+        tab = tabs[command["index"] - 1]
+    else:
+        wanted = set(_TAB_WORD.findall(command.get("name", "")))
+        scores = {tab.id: len(wanted & _tab_words(tab)) for tab in tabs}
+        best = max(scores.values(), default=0)
+        matches = [tab for tab in tabs if best and scores[tab.id] == best]
+        if not matches:
+            return None, f"no open tab matches \"{command.get('name', '')}\""
+        if len(matches) > 1:
+            titles = "; ".join(tab.title[:40] or tab.url[:40] for tab in matches[:3])
+            return None, f"several tabs match: {titles}"
+        tab = matches[0]
+    label = (tab.title or tab.url)[:50]
+    return {"type": kind, "tab_id": tab.id}, f"{verb} the tab \"{label}\""
 # Sites where a plain "search for …" almost always means searching that site.
 _SCOPED_BY_DEFAULT = {"youtube"}
 _HERE = re.compile(r"\s+(?:here|on\s+this\s+(?:site|page|website))\s*$", re.I)
@@ -215,7 +275,8 @@ def _numbered_choice(
 
 def command_gate(answers: dict, transcript: str) -> tuple[bool, str]:
     is_command = _probability(answers.get("is_command"))
-    explicit = explicit_browser_command(transcript)
+    # Anything the rules understand ("close the other tabs") is addressed to the browser.
+    explicit = explicit_browser_command(transcript) or deterministic_intent(transcript) is not None
     return is_command >= THRESHOLDS["is_command"] or explicit, f"{is_command:.4f}; explicit={explicit}"
 
 
@@ -232,7 +293,10 @@ def intent_gate(answers: dict, transcript: str, element_match: bool) -> tuple[st
 
 
 def early_intent(transcript: str, element_match: bool) -> bool:
-    return deterministic_intent(transcript, element_match=element_match) in EARLY_INTENTS
+    intent = deterministic_intent(transcript, element_match=element_match)
+    if intent == "media":
+        return (media_command(transcript) or {}).get("command") in INSTANT_MEDIA
+    return intent in EARLY_INTENTS
 
 
 def complete_gate(
@@ -248,7 +312,12 @@ def complete_gate(
     return ok, round(complete, 4)
 
 
-def payload_gate(intent: str, *, final: bool, silent_seconds: float) -> bool:
+def payload_gate(intent: str, *, final: bool, silent_seconds: float, transcript: str = "") -> bool:
+    if intent in {"switch_tab", "close_tab"}:
+        # "next tab" / "close this tab" are complete as said; a tab's name or number may still be coming.
+        reference = tab_command(transcript) or {}
+        if not ("name" in reference or "index" in reference):
+            return True
     return intent not in _PAYLOAD_INTENTS or final or silent_seconds >= PAYLOAD_SILENCE_SECONDS
 
 
@@ -283,7 +352,7 @@ def evaluate(
         return PolicyResult("wait", "waiting for the rest of the command", reasons=reasons)
 
     if intent in _PAYLOAD_INTENTS:
-        payload_ok = payload_gate(intent, final=final, silent_seconds=silent_seconds)
+        payload_ok = payload_gate(intent, final=final, silent_seconds=silent_seconds, transcript=transcript)
         _reason(reasons, "payload_final", round(silent_seconds, 3), PAYLOAD_SILENCE_SECONDS, payload_ok)
         if not payload_ok:
             return PolicyResult("wait", "waiting for the end of the dictated text", reasons=reasons)
@@ -301,9 +370,10 @@ def evaluate(
     destructive_score = _probability(answers.get("destructive"))
     page_action = action["type"] in _PAGE_ACTIONS
     safe_link = ordinary_navigation_link(action, snapshot)
-    destructive = page_action and not safe_link and (
-        destructive_score >= THRESHOLDS["destructive"]
-        or deterministic_destructive(action, snapshot)
+    destructive = action["type"] == "close_other_tabs" or (
+        page_action
+        and not safe_link
+        and (destructive_score >= THRESHOLDS["destructive"] or deterministic_destructive(action, snapshot))
     )
     destructive_value = (
         f"{destructive_score:.4f}; page_action={page_action}; ordinary_link={safe_link}"

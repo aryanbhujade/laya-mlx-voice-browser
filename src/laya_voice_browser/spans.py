@@ -195,6 +195,11 @@ def command_plan(transcript: str) -> list[str]:
             flags=re.I,
         )
 
+    trailing_new_tab = re.match(r"^(?P<command>.+?)\s+in\s+(?:a\s+)?new\s+tab$", text, flags=re.I)
+    if trailing_new_tab:
+        # "open youtube in a new tab" → open a tab, then open YouTube there.
+        return ["open a new tab", *command_chain(trailing_new_tab.group("command"))]
+
     new_tab = re.match(
         r"^(?:in\s+)?(?:a\s+)?new\s+tab\s*,?\s+"
         r"(?:(?:can|could|would|will)\s+you\s+)?(.+)$",
@@ -341,6 +346,12 @@ def explicit_browser_command(transcript: str) -> bool:
 def deterministic_intent(transcript: str, *, element_match: bool = False) -> str | None:
     """Intent from explicit grammar; `element_match` means a visible element label shares a word."""
     value = strip_lead(transcript).casefold()
+    if media_command(value):
+        return "media"
+    tabs = tab_command(value)
+    if tabs:
+        # "go to the YouTube tab" is about a tab, not about opening YouTube.
+        return "switch_tab" if tabs["kind"] == "switch_tab" else "close_tab"
     if re.search(r"^(?:please\s+)?(?:go\s+to|open|visit)\b", value) and not re.search(
         r"\bnew\s+tab\b", value
     ):
@@ -386,10 +397,140 @@ def spoken_scroll_amount(transcript: str, direction: str) -> str | None:
 def spoken_tab_direction(transcript: str) -> str | None:
     value = clean(transcript).casefold()
     for direction, pattern in (
-        ("previous", r"\b(?:previous|last|prior)\s+tab\b"),
+        ("previous", r"\b(?:previous|prior)\s+tab\b"),
         ("first", r"\bfirst\s+tab\b"),
+        ("last", r"\blast\s+tab\b"),
         ("next", r"\b(?:next|another|other)\s+tab\b|\bswitch\s+tabs?\b"),
     ):
         if re.search(pattern, value):
             return direction
+    return None
+
+
+_MEDIA_NOUN = (
+    r"(?:\s+(?:the|this|that|it|my))?"
+    r"(?:\s+(?:video|song|music|audio|sound|clip|player|tab|track|podcast|stream))?"
+)
+_SECONDS = (
+    r"(?P<amount>\d+|a|one|two|three|four|five|six|seven|eight|nine|ten"
+    r"|fifteen|twenty|thirty|forty|fifty|sixty)"
+)
+_SECOND_WORDS = {
+    "a": 1, "ten": 10, "fifteen": 15, "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60,
+}
+_TIME = _SECONDS + r"\s+(?P<unit>seconds?|minutes?)$"
+_VOLUME = r"(?:it|the\s+volume|the\s+sound)"
+_MEDIA_PATTERNS = (
+    (rf"^(?:pause|hold){_MEDIA_NOUN}$", "pause"),
+    (rf"^(?:play|resume|unpause|continue){_MEDIA_NOUN}(?:\s+playing)?$", "play"),
+    (rf"^un-?mute{_MEDIA_NOUN}$|^turn\s+(?:the\s+)?sound\s+(?:back\s+)?on$", "unmute"),
+    (rf"^mute{_MEDIA_NOUN}$|^turn\s+(?:the\s+)?sound\s+off$", "mute"),
+    (rf"^(?:turn\s+{_VOLUME}\s+up|volume\s+up|louder|increase\s+(?:the\s+)?volume)$", "volume_up"),
+    (
+        rf"^(?:turn\s+{_VOLUME}\s+down|volume\s+down|quieter"
+        r"|(?:lower|decrease)\s+(?:the\s+)?volume)$",
+        "volume_down",
+    ),
+    (r"^(?:skip|jump|go|fast)\s+(?:ahead|forward)(?:\s+by)?\s+" + _TIME, "forward"),
+    (r"^(?:skip\s+ahead|fast\s+forward)$", "forward"),
+    (r"^(?:rewind|go\s+back|jump\s+back|skip\s+back)(?:\s+by)?\s+" + _TIME, "back"),
+    (r"^rewind$", "back"),
+    (r"^(?:speed\s+(?:it\s+)?up|play\s+faster|faster)$", "faster"),
+    (r"^(?:slow\s+(?:it\s+)?down|play\s+slower|slower)$", "slower"),
+    (r"^(?:normal\s+speed|reset\s+(?:the\s+)?speed|play\s+at\s+normal\s+speed)$", "normal_speed"),
+    (
+        r"^(?:play\s+at|set\s+(?:the\s+)?speed\s+to)\s+(?P<rate>\d+(?:\.\d+)?)\s*(?:x|times)?"
+        r"(?:\s+speed)?$",
+        "rate",
+    ),
+    (r"^(?:exit|leave|close)\s+full\s*screen$", "exit_fullscreen"),
+    (r"^(?:(?:go|make\s+it|switch\s+to)\s+)?full\s*screen$", "fullscreen"),
+    (
+        r"^(?:turn\s+on|show|enable)\s+(?:the\s+)?(?:captions|subtitles)$|^(?:captions|subtitles)\s+on$",
+        "captions_on",
+    ),
+    (
+        r"^(?:turn\s+off|hide|disable)\s+(?:the\s+)?(?:captions|subtitles)$"
+        r"|^(?:captions|subtitles)\s+off$",
+        "captions_off",
+    ),
+    (
+        r"^(?:(?:scroll|go|skip|move)\s+(?:down\s+)?to\s+the\s+)?next\s+(?:video|short|song|clip|one)$"
+        r"|^skip\s+(?:this|the)\s+(?:video|song)$",
+        "next",
+    ),
+    (r"^skip\s+(?:(?:this|the)\s+)?ads?$", "skip_ad"),
+    (
+        r"^(?:(?:scroll|go|move)\s+(?:up\s+)?(?:back\s+)?to\s+the\s+)?previous\s+"
+        r"(?:video|short|song|clip|one)$|^last\s+video$",
+        "previous",
+    ),
+)
+# Commands that nothing said afterwards can change, so they may run while the phrase continues.
+INSTANT_MEDIA = {"pause", "play", "mute", "unmute"}
+
+
+def media_command(transcript: str) -> dict | None:
+    """Video and audio control: {"command": "pause" | "mute" | "forward" | …, "amount": seconds or rate}."""
+    value = strip_lead(transcript).casefold().strip(" .!?")
+    for pattern, command in _MEDIA_PATTERNS:
+        match = re.match(pattern, value)
+        if not match:
+            continue
+        result: dict = {"command": command}
+        groups = match.groupdict()
+        if command in {"forward", "back"}:
+            word = groups.get("amount") or "10"
+            amount = int(word) if word.isdigit() else _SECOND_WORDS.get(word) or _NUMBER_WORDS.get(word, 10)
+            result["amount"] = amount * (60 if (groups.get("unit") or "").startswith("minute") else 1)
+        if command == "rate":
+            result["amount"] = min(4.0, max(0.25, float(groups["rate"])))
+        return result
+    return None
+
+
+_TAB_CLOSE = re.compile(r"^(?:close|shut|kill|get\s+rid\s+of|remove)\b")
+_TAB_SWITCH = re.compile(r"^(?:switch|go|move|jump|change|show|open|take\s+me|bring\s+up|select|pick|use)\b")
+_TAB_POSITION = re.compile(
+    r"\btab\s+(?:number\s+)?(?P<number>\d+|one|two|three|four|five|six|seven|eight|nine)\b"
+    r"|\b(?P<ordinal>first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)\s+tab\b"
+)
+_TAB_NAME_STOP = {
+    "close", "shut", "kill", "get", "rid", "remove", "switch", "go", "move", "jump", "change", "show", "open",
+    "take", "me", "bring", "up", "select", "pick", "use", "to", "the", "a", "tab", "tabs", "of", "with",
+    "that", "which", "has", "is", "on", "for", "called", "named", "one", "back", "over", "please", "about",
+}
+
+
+def tab_command(transcript: str) -> dict | None:
+    """A command about browser tabs: {"kind": "switch_tab" | "close_tab" | "close_other_tabs", plus one of
+    "index" (1-based), "direction" (next/previous/first/last) or "name" (words to match titles)}."""
+    value = strip_lead(transcript).casefold().strip(" .!?")
+    if not re.search(r"\btabs?\b", value) or re.search(r"\bnew\s+tab\b", value):
+        return None
+    closing = bool(_TAB_CLOSE.search(value))
+    others = r"\b(?:all\s+(?:the\s+)?)?other\s+tabs\b|\ball\s+(?:the\s+)?other\b|\bevery\s+other\s+tab\b"
+    if closing and re.search(others, value):
+        return {"kind": "close_other_tabs"}
+    reference: dict = {}
+    position = _TAB_POSITION.search(value)
+    direction = spoken_tab_direction(value)
+    if position:
+        word = position.group("number") or position.group("ordinal")
+        reference["index"] = int(word) if word.isdigit() else _NUMBER_WORDS[word]
+    elif re.search(r"\b(?:this|current)\s+tab\b", value):
+        reference["current"] = True
+    elif direction:
+        reference["direction"] = direction
+    else:
+        words = [word for word in re.findall(r"[a-z0-9]+", value) if word not in _TAB_NAME_STOP]
+        if words:
+            reference["name"] = " ".join(words)
+    verbless = re.match(
+        r"^(?:the\s+)?(?:(?:next|previous|first|last|\w+)\s+tab|tab\s+(?:number\s+)?\w+)$", value
+    )
+    if closing:
+        return {"kind": "close_tab", **reference}
+    if _TAB_SWITCH.search(value) or verbless or reference.get("direction"):
+        return {"kind": "switch_tab", **reference} if reference else None
     return None

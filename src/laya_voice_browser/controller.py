@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, quote_plus, urlparse
 
-from .browser import Browser, BrowserSessionLost, StalePage
+from .browser import Browser, BrowserSessionLost, NoMedia, StalePage
 from .laya import LayaEngine
 from .policy import evaluate
 from .questions import DEBOUNCE_SECONDS, SITE_SEARCH
@@ -419,7 +419,11 @@ class StreamingController:
             outcome = self.browser.execute(action, expected_fingerprint=fingerprint)
         except StalePage:
             self._status("unsure", label="Page changed", ttl=2.0)
-            self.announce("Safari changed before execution; discarded the stale decision")
+            self.announce("the page changed before execution; discarded the stale decision")
+            return
+        except NoMedia as exc:
+            self._status("unsure", label="No video here", ttl=2.0)
+            self.announce(str(exc))
             return
         finished = time.perf_counter()
         item = {

@@ -14,10 +14,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .browser import BrowserSessionLost, StalePage
-from .page import CANDIDATES_JS, SCROLL_JS, SNAPSHOT_JS, call_script, decision_still_valid, snapshot_from_raw
+from .browser import BrowserSessionLost, NoMedia, StalePage, pick_tab
+from .page import (
+    CANDIDATES_JS,
+    MEDIA_JS,
+    SCROLL_JS,
+    SNAPSHOT_JS,
+    call_script,
+    decision_still_valid,
+    snapshot_from_raw,
+)
 from .questions import MAX_OBSERVED_ELEMENTS
-from .types import Snapshot
+from .types import Snapshot, Tab
 
 LAUNCH_TIMEOUT_SECONDS = 20.0
 NAVIGATION_TIMEOUT_SECONDS = 10.0
@@ -139,6 +147,7 @@ class ChromiumBrowser:
         self._sessions: dict[str, str] = {}
         self._target: str | None = None
         self._last_snapshot: Snapshot | None = None
+        self._order: list[str] = []
 
     # -- connection -------------------------------------------------------------------------------
 
@@ -184,13 +193,29 @@ class ChromiumBrowser:
     # -- pages ------------------------------------------------------------------------------------
 
     def _pages(self) -> list[dict[str, Any]]:
+        """Open tabs in the order you see them. The DevTools Protocol has no tab-strip order, so it is
+        kept here: new tabs go last, and a tab opened from a link goes right after its opener (where
+        Chromium puts it)."""
         targets = self._cdp.call("Target.getTargets")["targetInfos"]
-        return [
-            target
+        pages = {
+            target["targetId"]: target
             for target in targets
             if target["type"] == "page"
             and not target["url"].startswith(("devtools://", "chrome-extension://"))
-        ]
+        }
+        self._order = [tab_id for tab_id in self._order if tab_id in pages]
+        for tab_id, page in pages.items():
+            if tab_id in self._order:
+                continue
+            opener = page.get("openerId")
+            if opener in self._order:
+                position = self._order.index(opener) + 1
+                while position < len(self._order) and pages[self._order[position]].get("openerId") == opener:
+                    position += 1  # after the opener's earlier children, like Chromium
+                self._order.insert(position, tab_id)
+            else:
+                self._order.append(tab_id)
+        return [pages[tab_id] for tab_id in self._order]
 
     def _session(self, target_id: str) -> str:
         if target_id not in self._sessions:
@@ -216,6 +241,7 @@ class ChromiumBrowser:
         """The tab Laya is working in: the one it last used while that is still showing, otherwise
         whichever tab the user has brought to the front themselves."""
         pages = self._pages()
+        self._last_pages = pages
         ids = [page["targetId"] for page in pages]
         if not ids:
             self._target = self._cdp.call("Target.createTarget", {"url": "about:blank"})["targetId"]
@@ -250,8 +276,13 @@ class ChromiumBrowser:
     # -- Browser interface ------------------------------------------------------------------------
 
     def snapshot(self) -> Snapshot:
-        raw = self._evaluate(self._current(), call_script(SNAPSHOT_JS, MAX_OBSERVED_ELEMENTS))
-        snapshot = snapshot_from_raw(raw or {})
+        current = self._current()
+        raw = self._evaluate(current, call_script(SNAPSHOT_JS, MAX_OBSERVED_ELEMENTS))
+        tabs = tuple(
+            Tab(page["targetId"], page.get("title", ""), page.get("url", ""), page["targetId"] == current)
+            for page in getattr(self, "_last_pages", [])
+        )
+        snapshot = snapshot_from_raw(raw or {}, tabs=tabs)
         self._last_snapshot = snapshot
         return snapshot
 
@@ -313,23 +344,27 @@ class ChromiumBrowser:
             self._call_page("Page.reload")
             time.sleep(0.15)
             self._wait_loaded(target, None, NAVIGATION_TIMEOUT_SECONDS, require_change=False)
+        elif kind == "media":
+            self._media(target, action)
         elif kind == "new_tab":
             self._activate(self._cdp.call("Target.createTarget", {"url": "about:blank"})["targetId"])
         elif kind == "close_tab":
-            pages = self._pages()
-            if len(pages) <= 1:
+            ids = [page["targetId"] for page in self._pages()]
+            if len(ids) <= 1:
                 raise RuntimeError("Refusing to close the only tab")
-            self._cdp.call("Target.closeTarget", {"targetId": target})
-            self._sessions.pop(target, None)
-            self._activate(next(page["targetId"] for page in pages if page["targetId"] != target))
+            victim = pick_tab(ids, target, action)
+            self._cdp.call("Target.closeTarget", {"targetId": victim})
+            self._sessions.pop(victim, None)
+            if victim == target:
+                self._activate(next(tab_id for tab_id in ids if tab_id != victim))
+        elif kind == "close_other_tabs":
+            for tab_id in [page["targetId"] for page in self._pages()]:
+                if tab_id != target:
+                    self._cdp.call("Target.closeTarget", {"targetId": tab_id})
+                    self._sessions.pop(tab_id, None)
         elif kind == "switch_tab":
             ids = [page["targetId"] for page in self._pages()]
-            current = ids.index(target) if target in ids else 0
-            direction = action.get("direction", "next")
-            index = (
-                0 if direction == "first" else (current + (-1 if direction == "previous" else 1)) % len(ids)
-            )
-            self._activate(ids[index])
+            self._activate(pick_tab(ids, target, {"direction": "next", **action}))
         else:
             raise ValueError(f"Unsupported action: {kind}")
         time.sleep(0.05)
@@ -360,6 +395,25 @@ class ChromiumBrowser:
             self._call_page("Input.dispatchMouseEvent", {"type": "mouseReleased", **base})
         if point.get("href") and point["href"] != before_url:
             self._wait_loaded(target, before_url, LINK_WAIT_SECONDS, require_change=True)
+
+    def _media(self, target: str, action: dict[str, Any]) -> None:
+        before = self._evaluate(target, "location.href")
+        done = self._evaluate(target, call_script(MEDIA_JS, action["command"], action.get("amount")))
+        if not done:
+            raise NoMedia(f"nothing on this page can {action['command'].replace('_', ' ')}")
+        if done.get("press"):
+            point = self._evaluate(
+                target, call_script(_POINT_JS.replace("data-laya-id", "data-laya-press"), "1")
+            )
+            if point:
+                base = {"x": point["x"], "y": point["y"], "button": "left", "clickCount": 1}
+                self._call_page(
+                    "Input.dispatchMouseEvent", {"type": "mouseMoved", "x": point["x"], "y": point["y"]}
+                )
+                self._call_page("Input.dispatchMouseEvent", {"type": "mousePressed", **base})
+                self._call_page("Input.dispatchMouseEvent", {"type": "mouseReleased", **base})
+        if action["command"] in {"next", "previous"}:
+            self._wait_loaded(target, before, LINK_WAIT_SECONDS, require_change=True)
 
     def _focus_field(self, target: str, element_id: str) -> None:
         if not self._evaluate(target, call_script(_FOCUS_JS, element_id)):

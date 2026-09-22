@@ -29,6 +29,7 @@ from .spans import (
     mentioned_site,
     spoken_scroll_amount,
     spoken_tab_direction,
+    tab_command,
     text_candidates,
     url_candidates,
 )
@@ -385,7 +386,7 @@ class LayaEngine:
             intent_ok
             and command_gate(answers, transcript)[0]
             and complete_gate(answers, final=final, silent_seconds=silent_seconds, early=early)[0]
-            and payload_gate(intent, final=final, silent_seconds=silent_seconds)
+            and payload_gate(intent, final=final, silent_seconds=silent_seconds, transcript=transcript)
         )
         lexical_target = None
         target_candidates: list[str] = []
@@ -445,7 +446,7 @@ class LayaEngine:
                 questions[qid] = target_question(list(target_labels))
             elif qid == "scroll_amount" and spoken_scroll_amount(transcript, "down") is None:
                 questions[qid] = fixed[qid]
-            elif qid == "tab_direction" and spoken_tab_direction(transcript) is None:
+            elif qid == "tab_direction" and not (spoken_tab_direction(transcript) or tab_command(transcript)):
                 questions[qid] = fixed[qid]
             elif qid == "destructive":
                 questions[qid] = fixed[qid]
