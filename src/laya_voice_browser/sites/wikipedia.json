@@ -1,0 +1,18 @@
+{
+  "name": "Wikipedia",
+  "hosts": ["wikipedia.org"],
+  "actions": [
+    {"id": "random", "description": "open a random article",
+     "say": ["(open |show me |go to )?(a )?random (article|page)", "surprise me"],
+     "terms": ["teach me about something unexpected", "show me any article"],
+     "do": {"open": "https://en.wikipedia.org/wiki/Special:Random"}},
+    {"id": "references", "description": "scroll to the references",
+     "say": ["(show|go to|scroll to) (the )?(references|sources|citations)"],
+     "terms": ["where did this information come from", "show me the evidence", "what are the sources"],
+     "do": {"scroll_to": ["#References", "#Notes", "#Citations", ".reflist"]}},
+    {"id": "contents", "description": "scroll to the top of the article",
+     "say": ["(go to|scroll to|back to) (the )?(top|beginning|contents)"],
+     "terms": ["take me back to the start", "show the beginning of this article"],
+     "do": {"scroll_to": ["#firstHeading", "h1"]}}
+  ]
+}

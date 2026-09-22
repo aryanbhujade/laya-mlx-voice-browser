@@ -1,0 +1,247 @@
+{
+  "name": "Gmail",
+  "hosts": [
+    "mail.google.com"
+  ],
+  "actions": [
+    {
+      "id": "compose",
+      "description": "write a new email",
+      "say": [
+        "compose( an?)?( new)?( email| message)?",
+        "(write|start|new) (an? )?(new )?(email|message)"
+      ],
+      "terms": [
+        "send someone a new message",
+        "start writing an email",
+        "create a new email",
+        "write an email to someone",
+        "write to my boss",
+        "start a new message to someone"
+      ],
+      "do": {
+        "click": [
+          "compose"
+        ]
+      }
+    },
+    {
+      "id": "reply",
+      "description": "reply to this email",
+      "say": [
+        "reply( to (this|the) (email|message))?"
+      ],
+      "terms": [
+        "write back to them",
+        "answer this message",
+        "respond to this email"
+      ],
+      "do": {
+        "click": [
+          "reply"
+        ]
+      }
+    },
+    {
+      "id": "reply_all",
+      "description": "reply to everyone on this email",
+      "say": [
+        "reply (to )?all"
+      ],
+      "terms": [
+        "write back to everyone",
+        "answer everyone on this message",
+        "respond to all recipients"
+      ],
+      "do": {
+        "click": [
+          "reply all"
+        ]
+      }
+    },
+    {
+      "id": "forward",
+      "description": "forward this email",
+      "say": [
+        "forward( (this|the) (email|message))?"
+      ],
+      "terms": [
+        "pass this email on",
+        "send this message to somebody else"
+      ],
+      "do": {
+        "click": [
+          "forward"
+        ]
+      }
+    },
+    {
+      "id": "archive",
+      "description": "archive this email",
+      "say": [
+        "archive( (this|the|it) (email|message)?)?",
+        "archive it"
+      ],
+      "terms": [
+        "get rid of this email but keep it",
+        "put this email away",
+        "remove this email from my inbox",
+        "hide this message but do not delete it"
+      ],
+      "do": {
+        "click": [
+          "archive"
+        ]
+      }
+    },
+    {
+      "id": "delete",
+      "description": "delete this email",
+      "confirm": true,
+      "say": [
+        "(delete|trash|bin) (this|the|it)( email| message)?",
+        "delete"
+      ],
+      "terms": [
+        "get rid of this email permanently",
+        "remove this message forever"
+      ],
+      "do": {
+        "click": [
+          "delete"
+        ]
+      }
+    },
+    {
+      "id": "mark_read",
+      "description": "mark this email as read",
+      "say": [
+        "mark (it |this |this email )?as read"
+      ],
+      "terms": [
+        "this is not new anymore",
+        "clear the unread status"
+      ],
+      "do": {
+        "click": [
+          "mark as read"
+        ]
+      }
+    },
+    {
+      "id": "mark_unread",
+      "description": "mark this email as unread",
+      "say": [
+        "mark (it |this |this email )?as unread"
+      ],
+      "terms": [
+        "remind me to read this later",
+        "make this message look unread"
+      ],
+      "do": {
+        "click": [
+          "mark as unread"
+        ]
+      }
+    },
+    {
+      "id": "newer",
+      "description": "go to the newer email",
+      "say": [
+        "(next|newer) (email|message)"
+      ],
+      "terms": [
+        "show me a more recent email",
+        "move to the newer message"
+      ],
+      "do": {
+        "click": [
+          "newer"
+        ]
+      }
+    },
+    {
+      "id": "older",
+      "description": "go to the older email",
+      "say": [
+        "(previous|older) (email|message)"
+      ],
+      "terms": [
+        "show me an earlier email",
+        "move to the older message"
+      ],
+      "do": {
+        "click": [
+          "older"
+        ]
+      }
+    },
+    {
+      "id": "inbox",
+      "description": "go to the inbox",
+      "say": [
+        "(go to|open|show) (my |the )?inbox"
+      ],
+      "terms": [
+        "show my new mail",
+        "take me back to my mail"
+      ],
+      "do": {
+        "open": "https://mail.google.com/mail/u/0/#inbox"
+      }
+    },
+    {
+      "id": "sent",
+      "description": "go to sent mail",
+      "say": [
+        "(go to|open|show) (my |the )?sent( mail| emails)?"
+      ],
+      "terms": [
+        "emails I sent",
+        "messages I have sent"
+      ],
+      "do": {
+        "open": "https://mail.google.com/mail/u/0/#sent"
+      }
+    },
+    {
+      "id": "drafts",
+      "description": "go to drafts",
+      "say": [
+        "(go to|open|show) (my |the )?drafts"
+      ],
+      "terms": [
+        "unfinished emails",
+        "messages I have not sent"
+      ],
+      "do": {
+        "open": "https://mail.google.com/mail/u/0/#drafts"
+      }
+    },
+    {
+      "id": "starred",
+      "description": "go to starred emails",
+      "say": [
+        "(go to|open|show) (my |the )?starred( emails)?"
+      ],
+      "terms": [
+        "important saved emails",
+        "messages I starred"
+      ],
+      "do": {
+        "open": "https://mail.google.com/mail/u/0/#starred"
+      }
+    },
+    {
+      "id": "search_mail",
+      "description": "search my email",
+      "say": [
+        "search (my |the )?(mail|email|emails|inbox|gmail) for (?P<text>.+)",
+        "find (emails|mail) (from|about) (?P<text>.+)"
+      ],
+      "do": {
+        "open": "https://mail.google.com/mail/u/0/#search/{text}"
+      }
+    }
+  ]
+}

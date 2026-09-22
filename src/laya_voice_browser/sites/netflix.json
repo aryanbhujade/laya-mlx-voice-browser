@@ -1,0 +1,14 @@
+{
+  "name": "Netflix",
+  "hosts": ["netflix.com"],
+  "actions": [
+    {"id": "skip_intro", "description": "skip the intro or recap", "instant": true,
+     "say": ["skip( the)? (intro|recap|opening|credits)", "skip it"],
+     "terms": ["get past the opening", "jump over the recap", "move past the credits"],
+     "do": {"click": ["skip intro", "skip recap", "skip credits"]}},
+    {"id": "next_episode", "description": "play the next episode",
+     "say": ["(play |go to |start )?(the )?next episode"],
+     "terms": ["continue with the following episode", "watch what comes next"],
+     "do": {"click": ["next episode"]}}
+  ]
+}

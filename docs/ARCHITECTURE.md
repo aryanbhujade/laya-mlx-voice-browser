@@ -24,14 +24,17 @@ Laya answers one multiple-choice question per model pass, over at most 512 token
 1. **Grammar first** (`spans.py`). Explicit commands are settled by rules; "go back", "go forward", "reload" and
    "new tab" run mid-speech with no model call. The speaking style decides whether polite requests ("could you
    please…") count as explicit.
-2. **Stage 1** asks only the unsettled of `is_command`, `intent` and `complete`, over a slim state (transcript,
+2. **Site packs** (`sites/`) match site-specific explicit phrases and clear natural examples before the model.
+   When rules are insufficient, only relevant controls become a short Laya choice. See
+   [Writing site packs](SITE_PACKS.md).
+3. **Stage 1** asks only the unsettled of `is_command`, `intent` and `complete`, over a slim state (transcript,
    page, four most relevant elements, recent actions).
-3. **Stage 2** asks only what the intent needs, and only once the policy would act: `target` and
+4. **Stage 2** asks only what the intent needs, and only once the policy would act: `target` and
    `destructive` for clicks, `text_span` for searches, `url_span`/`site` when no site was named.
-4. **Targets.** Elements are ranked by word overlap with the transcript; a unique best label match is used
+5. **Targets.** Elements are ranked by word overlap with the transcript; a unique best label match is used
    directly, and ties go to Laya's `target` question over at most nine `"label (role)"` options. If it is
    still unclear, numbered badges appear on the page.
-5. **Policy** (`policy.py`, `safety.py`) applies confidence, completeness and payload gates, and requires a
+6. **Policy** (`policy.py`, `safety.py`) applies confidence, completeness and payload gates, and requires a
    spoken "confirm" for destructive or account-changing actions.
 
 State is ordered by usefulness and trimmed to fit each question's token budget instead of being cut silently.

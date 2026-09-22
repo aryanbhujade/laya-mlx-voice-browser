@@ -14,14 +14,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .browser import BrowserSessionLost, NoMedia, StalePage, pick_tab
+from .browser import BrowserSessionLost, NoMedia, StalePage, Unavailable, pick_tab
 from .page import (
     CANDIDATES_JS,
+    FOCUS_FIELD_JS,
     MEDIA_JS,
     SCROLL_JS,
+    SCROLL_TO_JS,
+    SITE_FIND_JS,
     SNAPSHOT_JS,
     call_script,
     decision_still_valid,
+    parse_keys,
     snapshot_from_raw,
 )
 from .questions import MAX_OBSERVED_ELEMENTS
@@ -346,6 +350,8 @@ class ChromiumBrowser:
             self._wait_loaded(target, None, NAVIGATION_TIMEOUT_SECONDS, require_change=False)
         elif kind == "media":
             self._media(target, action)
+        elif kind == "site":
+            self._site(target, action, before_url)
         elif kind == "new_tab":
             self._activate(self._cdp.call("Target.createTarget", {"url": "about:blank"})["targetId"])
         elif kind == "close_tab":
@@ -396,22 +402,62 @@ class ChromiumBrowser:
         if point.get("href") and point["href"] != before_url:
             self._wait_loaded(target, before_url, LINK_WAIT_SECONDS, require_change=True)
 
+    def _press_tagged(self, target: str) -> None:
+        """A real click on the element a page script tagged with data-laya-press."""
+        point = self._evaluate(target, call_script(_POINT_JS.replace("data-laya-id", "data-laya-press"), "1"))
+        if not point:
+            return
+        base = {"x": point["x"], "y": point["y"], "button": "left", "clickCount": 1}
+        self._call_page("Input.dispatchMouseEvent", {"type": "mouseMoved", "x": point["x"], "y": point["y"]})
+        self._call_page("Input.dispatchMouseEvent", {"type": "mousePressed", **base})
+        self._call_page("Input.dispatchMouseEvent", {"type": "mouseReleased", **base})
+
+    def _press_keys(self, spec: str) -> None:
+        _, key = parse_keys(spec)
+        common = {
+            "key": key["key"],
+            "code": key["code"],
+            "windowsVirtualKeyCode": key["vk"],
+            "nativeVirtualKeyCode": key["vk"],
+            "modifiers": key["bits"],
+        }
+        typed = {"text": key["text"], "unmodifiedText": key["text"]} if key["text"] else {}
+        self._call_page("Input.dispatchKeyEvent", {"type": "keyDown", **common, **typed})
+        self._call_page("Input.dispatchKeyEvent", {"type": "keyUp", **common})
+
+    def _site(self, target: str, action: dict[str, Any], before_url: str) -> None:
+        do = action["do"]
+        if "key" in do:
+            self._press_keys(do["key"])
+        elif "click" in do or "click_css" in do:
+            found = self._evaluate(
+                target, call_script(SITE_FIND_JS, do.get("click", []), do.get("click_css", []))
+            )
+            if not found:
+                raise Unavailable(f"there is no {action['id'].replace('_', ' ')} control on this page")
+            self._press_tagged(target)
+            if found.get("href") and found["href"] != before_url:
+                self._wait_loaded(target, before_url, LINK_WAIT_SECONDS, require_change=True)
+        elif "fill" in do:
+            if not self._evaluate(target, call_script(FOCUS_FIELD_JS, do["fill"])):
+                raise Unavailable("that field is not on this page")
+            self._call_page("Input.insertText", {"text": action.get("text", "")})
+            if do.get("submit"):
+                self._press_keys("enter")
+                self._wait_loaded(target, before_url, LINK_WAIT_SECONDS, require_change=True)
+        elif "scroll_to" in do:
+            if not self._evaluate(target, call_script(SCROLL_TO_JS, do["scroll_to"])):
+                raise Unavailable("that section is not on this page")
+        else:
+            raise ValueError(f"unsupported site action: {do}")
+
     def _media(self, target: str, action: dict[str, Any]) -> None:
         before = self._evaluate(target, "location.href")
         done = self._evaluate(target, call_script(MEDIA_JS, action["command"], action.get("amount")))
         if not done:
             raise NoMedia(f"nothing on this page can {action['command'].replace('_', ' ')}")
         if done.get("press"):
-            point = self._evaluate(
-                target, call_script(_POINT_JS.replace("data-laya-id", "data-laya-press"), "1")
-            )
-            if point:
-                base = {"x": point["x"], "y": point["y"], "button": "left", "clickCount": 1}
-                self._call_page(
-                    "Input.dispatchMouseEvent", {"type": "mouseMoved", "x": point["x"], "y": point["y"]}
-                )
-                self._call_page("Input.dispatchMouseEvent", {"type": "mousePressed", **base})
-                self._call_page("Input.dispatchMouseEvent", {"type": "mouseReleased", **base})
+            self._press_tagged(target)
         if action["command"] in {"next", "previous"}:
             self._wait_loaded(target, before, LINK_WAIT_SECONDS, require_change=True)
 

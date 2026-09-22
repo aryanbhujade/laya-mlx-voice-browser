@@ -4,7 +4,7 @@ import re
 from dataclasses import replace
 from urllib.parse import parse_qs, quote_plus, urlparse
 
-from . import browsers
+from . import browsers, sites
 from .answers import _choice, _confidence, _probability
 from .config import load as load_settings
 from .questions import (
@@ -33,7 +33,12 @@ from .types import ModelDecision, PolicyResult, Snapshot, Tab
 # Intents whose words describe *what* to act on, so they wait for the end of the phrase: a search
 # query, dictated text, or the element to click ("click create…" must not click "Create" early).
 _PAYLOAD_INTENTS = {
-    "search_web", "type_into_field", "select_option", "click_element", "switch_tab", "close_tab",
+    "search_web",
+    "type_into_field",
+    "select_option",
+    "click_element",
+    "switch_tab",
+    "close_tab",
 }
 # Only these act on page content; navigation, history, scroll and tabs cannot submit or change anything.
 _PAGE_ACTIONS = {"click", "type", "select", "press_enter"}
@@ -175,11 +180,24 @@ def _build_action(intent: str, decision: ModelDecision, snapshot: Snapshot) -> t
 
 _AMBIGUOUS = "the page target is ambiguous"
 MEDIA_SUMMARIES = {
-    "pause": "pause", "play": "play", "mute": "mute", "unmute": "unmute", "volume_up": "volume up",
-    "volume_down": "volume down", "forward": "skip ahead", "back": "rewind", "faster": "speed up",
-    "slower": "slow down", "normal_speed": "normal speed", "rate": "set the speed",
-    "fullscreen": "full screen", "exit_fullscreen": "exit full screen", "captions_on": "captions on",
-    "captions_off": "captions off", "next": "next video", "previous": "previous video",
+    "pause": "pause",
+    "play": "play",
+    "mute": "mute",
+    "unmute": "unmute",
+    "volume_up": "volume up",
+    "volume_down": "volume down",
+    "forward": "skip ahead",
+    "back": "rewind",
+    "faster": "speed up",
+    "slower": "slow down",
+    "normal_speed": "normal speed",
+    "rate": "set the speed",
+    "fullscreen": "full screen",
+    "exit_fullscreen": "exit full screen",
+    "captions_on": "captions on",
+    "captions_off": "captions off",
+    "next": "next video",
+    "previous": "previous video",
     "skip_ad": "skip the ad",
 }
 _TAB_WORD = re.compile(r"[a-z0-9]+")
@@ -215,13 +233,15 @@ def _tab_action(command: dict, snapshot: Snapshot) -> tuple[dict | None, str]:
         best = max(scores.values(), default=0)
         matches = [tab for tab in tabs if best and scores[tab.id] == best]
         if not matches:
-            return None, f"no open tab matches \"{command.get('name', '')}\""
+            return None, f'no open tab matches "{command.get("name", "")}"'
         if len(matches) > 1:
             titles = "; ".join(tab.title[:40] or tab.url[:40] for tab in matches[:3])
             return None, f"several tabs match: {titles}"
         tab = matches[0]
     label = (tab.title or tab.url)[:50]
-    return {"type": kind, "tab_id": tab.id}, f"{verb} the tab \"{label}\""
+    return {"type": kind, "tab_id": tab.id}, f'{verb} the tab "{label}"'
+
+
 # Sites where a plain "search for …" almost always means searching that site.
 _SCOPED_BY_DEFAULT = {"youtube"}
 _HERE = re.compile(r"\s+(?:here|on\s+this\s+(?:site|page|website))\s*$", re.I)
@@ -273,6 +293,55 @@ def _numbered_choice(
     )
 
 
+def _site_result(
+    decision: ModelDecision,
+    snapshot: Snapshot,
+    *,
+    final: bool,
+    silent_seconds: float,
+    reasons: list[dict],
+) -> PolicyResult:
+    """A site-pack control: an exact phrase acts; Laya's choice must also be addressed to the browser,
+    and account-changing controls it picks are confirmed first."""
+    site = decision.site or {}
+    action = sites.action_by_id(snapshot.url, str(site.get("id")))
+    if action is None:
+        return PolicyResult("clarify", "that control is not available on this site", reasons=reasons)
+    chosen_by_model = site.get("source") == "model"
+    inferred = site.get("source") in {"lexical", "model"}
+    if chosen_by_model:
+        # Two weak signals together: the speech must be addressed to the browser *and* shaped like a
+        # request. Laya alone confidently matches controls in ordinary talk ("my inbox is a disaster").
+        spoken = str(decision.state.get("transcript", ""))
+        command_ok, command_value = command_gate(decision.answers, spoken)
+        requested = sites.looks_like_request(spoken)
+        _reason(
+            reasons,
+            "is_command",
+            f"{command_value}; request={requested}",
+            THRESHOLDS["is_command"],
+            command_ok and requested,
+        )
+        if not (command_ok and requested):
+            return PolicyResult("ignore", "speech is not a browser command", reasons=reasons)
+    _reason(reasons, "site_action", f"{action.site}:{action.id} ({site.get('source')})", None, True)
+    done = final or silent_seconds >= PAYLOAD_SILENCE_SECONDS
+    if not (done or action.instant):
+        return PolicyResult("wait", "waiting for the end of the phrase", reasons=reasons)
+    do, text = action.do, str(site.get("text", ""))
+    if "open" in do:
+        built = {"type": "navigate", "url": sites.resolve_open(do["open"], snapshot.url, text)}
+    elif "media" in do:
+        built = {"type": "media", "command": do["media"]}
+    else:
+        built = {"type": "site", "site": action.site, "id": action.id, "do": do, "text": text}
+    if action.confirm or (inferred and action.side_effect):
+        return PolicyResult(
+            "confirm", f'say "confirm" to {action.description}', action=built, reasons=reasons
+        )
+    return PolicyResult("act", action.description, action=built, reasons=reasons)
+
+
 def command_gate(answers: dict, transcript: str) -> tuple[bool, str]:
     is_command = _probability(answers.get("is_command"))
     # Anything the rules understand ("close the other tabs") is addressed to the browser.
@@ -303,12 +372,7 @@ def complete_gate(
     answers: dict, *, final: bool, silent_seconds: float, early: bool = False
 ) -> tuple[bool, float]:
     complete = _probability(answers.get("complete"))
-    ok = (
-        early
-        or complete >= THRESHOLDS["complete"]
-        or final
-        or silent_seconds >= SILENCE_COMPLETE_SECONDS
-    )
+    ok = early or complete >= THRESHOLDS["complete"] or final or silent_seconds >= SILENCE_COMPLETE_SECONDS
     return ok, round(complete, 4)
 
 
@@ -331,6 +395,8 @@ def evaluate(
     answers = decision.answers
     transcript = str(decision.state.get("transcript", ""))
     reasons: list[dict] = []
+    if decision.site:
+        return _site_result(decision, snapshot, final=final, silent_seconds=silent_seconds, reasons=reasons)
     command_ok, command_value = command_gate(answers, transcript)
     _reason(reasons, "is_command", command_value, THRESHOLDS["is_command"], command_ok)
     if not command_ok:
@@ -375,9 +441,7 @@ def evaluate(
         and not safe_link
         and (destructive_score >= THRESHOLDS["destructive"] or deterministic_destructive(action, snapshot))
     )
-    destructive_value = (
-        f"{destructive_score:.4f}; page_action={page_action}; ordinary_link={safe_link}"
-    )
+    destructive_value = f"{destructive_score:.4f}; page_action={page_action}; ordinary_link={safe_link}"
     _reason(reasons, "destructive", destructive_value, THRESHOLDS["destructive"], not destructive)
     if destructive:
         return PolicyResult("confirm", f'say "confirm" to {summary}', action=action, reasons=reasons)

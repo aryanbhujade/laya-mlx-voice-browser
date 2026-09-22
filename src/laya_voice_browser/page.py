@@ -166,6 +166,109 @@ return null;
 """
 
 
+# Find a site-pack control by its label (aria-label, title or visible text: exact, or starting with the
+# label) or by CSS, and tag it for a real click. Returns {"label", "href"} or null.
+SITE_FIND_JS = r"""
+const [labels, selectors] = arguments;
+document.querySelectorAll('[data-laya-press]').forEach((el) => el.removeAttribute('data-laya-press'));
+const visible = (el) => el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
+const tag = (el, label) => {
+  el.setAttribute('data-laya-press', '1');
+  return {label, href: el.href || (el.closest('a') && el.closest('a').href) || ''};
+};
+for (const selector of selectors || []) {
+  const el = [...document.querySelectorAll(selector)].find(visible);
+  if (el) return tag(el, selector);
+}
+const wanted = (labels || []).map((label) => label.toLowerCase());
+if (!wanted.length) return null;
+const candidates = document.querySelectorAll(
+  'button, a, [role=button], [role=link], [role=tab], [role=menuitem], [aria-label], [data-tooltip], input[type=submit]');
+const name = (el) => (el.getAttribute('aria-label') || el.getAttribute('data-tooltip') || el.title ||
+  el.innerText || el.value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+for (const label of wanted) {
+  for (const exact of [true, false]) {
+    for (const el of candidates) {
+      if (!visible(el)) continue;
+      const text = name(el);
+      if (exact ? text === label : text.startsWith(label)) return tag(el, label);
+    }
+  }
+}
+return null;
+"""
+
+# Focus the first visible field matching the selectors and select its contents, ready for typing.
+FOCUS_FIELD_JS = r"""
+const el = arguments[0].map((s) => [...document.querySelectorAll(s)].find((e) => e.getClientRects().length))
+  .find(Boolean);
+if (!el) return false;
+el.scrollIntoView({block: 'center'});
+el.focus();
+if (typeof el.select === 'function') el.select();
+return true;
+"""
+
+SCROLL_TO_JS = r"""
+// Prefer a visible match; otherwise use one that exists but has not rendered yet (YouTube only fills in
+// its comments once they are scrolled towards).
+const all = arguments[0].flatMap((s) => [...document.querySelectorAll(s)]);
+const el = all.find((e) => e.getClientRects().length) || all[0];
+if (!el) return false;
+el.scrollIntoView({block: 'start', behavior: 'smooth'});
+return true;
+"""
+
+_KEY_NAMES = {
+    "enter": ("Enter", "Enter", 13, "\r"),
+    "escape": ("Escape", "Escape", 27, ""),
+    "space": (" ", "Space", 32, " "),
+    "tab": ("Tab", "Tab", 9, ""),
+    "left": ("ArrowLeft", "ArrowLeft", 37, ""),
+    "up": ("ArrowUp", "ArrowUp", 38, ""),
+    "right": ("ArrowRight", "ArrowRight", 39, ""),
+    "down": ("ArrowDown", "ArrowDown", 40, ""),
+    "/": ("/", "Slash", 191, "/"),
+    ".": (".", "Period", 190, "."),
+    ",": (",", "Comma", 188, ","),
+}
+_MODIFIER_BITS = {
+    "alt": 1,
+    "option": 1,
+    "ctrl": 2,
+    "control": 2,
+    "meta": 4,
+    "cmd": 4,
+    "command": 4,
+    "shift": 8,
+}
+
+
+def parse_keys(spec: str) -> tuple[list[str], dict[str, Any]]:
+    """ "shift+n" → (["shift"], {"key": "N", "code": "KeyN", "vk": 78, "text": "N"}) for key events."""
+    parts = [part.strip().casefold() for part in spec.split("+") if part.strip()]
+    modifiers, key = parts[:-1], parts[-1]
+    if key in _KEY_NAMES:
+        name, code, vk, text = _KEY_NAMES[key]
+    elif len(key) == 1 and key.isalnum():
+        char = key.upper() if "shift" in modifiers else key
+        name, code, vk, text = (
+            char,
+            (f"Key{key.upper()}" if key.isalpha() else f"Digit{key}"),
+            ord(key.upper()),
+            char,
+        )
+    else:
+        raise ValueError(f"unsupported key: {spec}")
+    return modifiers, {
+        "key": name,
+        "code": code,
+        "vk": vk,
+        "text": text,
+        "bits": sum(_MODIFIER_BITS[m] for m in modifiers),
+    }
+
+
 def call_script(script: str, *args: Any) -> str:
     """Wrap a script that reads `arguments` so it can run as a plain expression (CDP, extensions)."""
     return f"(function(){{{script}}}).apply(null, {json.dumps(list(args))})"

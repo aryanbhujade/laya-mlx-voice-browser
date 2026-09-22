@@ -1,5 +1,50 @@
 import AppKit
 
+/// Laya's compact menu-bar mark: an L with a four-point intelligence spark. The listening state
+/// keeps the same identity and turns the small companion dot into a second spark.
+private func layaMenuIcon(listening: Bool) -> NSImage {
+    let size = NSSize(width: 18, height: 18)
+    let image = NSImage(size: size, flipped: false) { _ in
+        NSColor.black.setFill()
+
+        NSBezierPath(
+            roundedRect: NSRect(x: 3.4, y: 3.1, width: 2.6, height: 11.4),
+            xRadius: 1.1,
+            yRadius: 1.1
+        ).fill()
+        NSBezierPath(
+            roundedRect: NSRect(x: 3.4, y: 3.1, width: 8.4, height: 2.6),
+            xRadius: 1.1,
+            yRadius: 1.1
+        ).fill()
+
+        func sparkle(center: NSPoint, horizontal: CGFloat, vertical: CGFloat, inner: CGFloat) {
+            let path = NSBezierPath()
+            path.move(to: NSPoint(x: center.x, y: center.y + vertical))
+            path.line(to: NSPoint(x: center.x + inner, y: center.y + inner))
+            path.line(to: NSPoint(x: center.x + horizontal, y: center.y))
+            path.line(to: NSPoint(x: center.x + inner, y: center.y - inner))
+            path.line(to: NSPoint(x: center.x, y: center.y - vertical))
+            path.line(to: NSPoint(x: center.x - inner, y: center.y - inner))
+            path.line(to: NSPoint(x: center.x - horizontal, y: center.y))
+            path.line(to: NSPoint(x: center.x - inner, y: center.y + inner))
+            path.close()
+            path.fill()
+        }
+
+        sparkle(center: NSPoint(x: 13.1, y: 13.1), horizontal: 3.5, vertical: 3.8, inner: 1.05)
+        if listening {
+            sparkle(center: NSPoint(x: 14.9, y: 7.8), horizontal: 1.45, vertical: 1.6, inner: 0.5)
+        } else {
+            NSBezierPath(ovalIn: NSRect(x: 14.15, y: 7.05, width: 1.5, height: 1.5)).fill()
+        }
+        return true
+    }
+    image.isTemplate = true
+    image.accessibilityDescription = listening ? "LayaBrowse, listening" : "LayaBrowse"
+    return image
+}
+
 /// The menu-bar icon: shows Laya is running, what is missing, and every setting.
 /// The menu is rebuilt each time it opens, so it always reflects the saved settings and the
 /// current permission state.
@@ -32,15 +77,19 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     }
 
     private func refreshIcon() {
-        let symbol: String
+        let image: NSImage
         if !Permission.missing(for: settings).isEmpty {
-            symbol = "exclamationmark.triangle"
+            image = NSImage(
+                systemSymbolName: "exclamationmark.triangle",
+                accessibilityDescription: "LayaBrowse needs permission"
+            ) ?? layaMenuIcon(listening: listening)
         } else {
-            symbol = listening ? "waveform.circle.fill" : "waveform"
+            image = layaMenuIcon(listening: listening)
         }
-        let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "LayaBrowse")
-        image?.isTemplate = true
+        image.isTemplate = true
         item.button?.image = image
+        item.button?.imagePosition = .imageOnly
+        item.button?.toolTip = listening ? "LayaBrowse — Listening" : "LayaBrowse"
     }
 
     // MARK: building the menu

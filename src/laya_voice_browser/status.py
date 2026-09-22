@@ -21,6 +21,9 @@ def free_udp_port() -> int:
 def action_kind(action: dict[str, Any]) -> str:
     """Island icon for an action: navigations that carry a query are shown as searches."""
     kind = str(action.get("type", ""))
+    if kind == "site":
+        do = action.get("do") or {}
+        return "type" if "fill" in do else "scroll" if "scroll_to" in do else "click"
     if kind == "navigate":
         query = parse_qs(urlparse(str(action.get("url", ""))).query)
         if _SEARCH_KEYS & set(query):

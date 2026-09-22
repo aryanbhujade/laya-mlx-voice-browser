@@ -204,6 +204,20 @@ def test_plain_link_does_not_need_confirmation():
     assert evaluate(decision, page, final=True, silent_seconds=0.0).verdict == "act"
 
 
+def test_inferred_site_side_effect_needs_confirmation():
+    decision = ModelDecision(
+        {},
+        {"text": [], "url": []},
+        0.0,
+        "test",
+        {"transcript": "give this video some love"},
+        site={"id": "like", "source": "lexical", "text": ""},
+    )
+    page = Snapshot("https://www.youtube.com/watch?v=x", "Video", "", (), "youtube")
+    result = evaluate(decision, page, final=True, silent_seconds=0.0)
+    assert result.verdict == "confirm"
+
+
 def _search(transcript, query, url):
     answers = base_answers("search_web")
     answers["text_span"] = choice(query, {query: 0.9, "none": 0.1})

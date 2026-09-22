@@ -1,0 +1,190 @@
+{
+  "name": "YouTube",
+  "hosts": [
+    "youtube.com"
+  ],
+  "actions": [
+    {
+      "id": "like",
+      "description": "like this video",
+      "side_effect": true,
+      "say": [
+        "like (this|the) video",
+        "give (it|this|this video) a (like|thumbs up)",
+        "thumbs up"
+      ],
+      "terms": [
+        "show that I liked this video",
+        "give this video some love"
+      ],
+      "do": {
+        "click": [
+          "like this video",
+          "i like this"
+        ]
+      }
+    },
+    {
+      "id": "dislike",
+      "description": "dislike this video",
+      "side_effect": true,
+      "say": [
+        "dislike (this|the) video",
+        "thumbs down"
+      ],
+      "terms": [
+        "show that I disliked this video",
+        "I do not like this video"
+      ],
+      "do": {
+        "click": [
+          "dislike this video",
+          "i dislike this"
+        ]
+      }
+    },
+    {
+      "id": "subscribe",
+      "description": "subscribe to this channel",
+      "confirm": true,
+      "say": [
+        "subscribe( to (this|the) channel)?"
+      ],
+      "terms": [
+        "follow this channel",
+        "sign me up for this channel"
+      ],
+      "do": {
+        "click": [
+          "subscribe"
+        ]
+      }
+    },
+    {
+      "id": "theater",
+      "description": "switch theater mode on or off",
+      "say": [
+        "(turn on |switch to |go to )?theat(er|re) mode",
+        "(make (it|the video) )?wider"
+      ],
+      "terms": [
+        "make the video bigger",
+        "make the video larger",
+        "give the video more room",
+        "wide video",
+        "expand the player",
+        "make the player take up more of the page",
+        "expand the video player",
+        "use a bigger player"
+      ],
+      "do": {
+        "key": "t"
+      }
+    },
+    {
+      "id": "miniplayer",
+      "description": "open the mini player",
+      "say": [
+        "(open (the )?)?mini ?player",
+        "picture in picture"
+      ],
+      "terms": [
+        "shrink the video",
+        "small player",
+        "small floating video",
+        "keep playing in the corner",
+        "put the video in the corner",
+        "pop the video out into a small window",
+        "put the video in a corner",
+        "shrink the video into a floating window"
+      ],
+      "do": {
+        "key": "i"
+      }
+    },
+    {
+      "id": "comments",
+      "description": "scroll down to the comments",
+      "say": [
+        "(show|open|go to|scroll to|read) (me )?(the )?comments"
+      ],
+      "terms": [
+        "what are people saying",
+        "read the reactions",
+        "show the discussion",
+        "take me to what people said"
+      ],
+      "do": {
+        "scroll_to": [
+          "#comments",
+          "ytd-comments"
+        ]
+      }
+    },
+    {
+      "id": "first_video",
+      "description": "open the first video in the list",
+      "say": [
+        "(open|play|click|watch) the (first|top) (video|result)"
+      ],
+      "terms": [
+        "play the top one",
+        "watch the first thing",
+        "start the first result"
+      ],
+      "do": {
+        "click_css": [
+          "ytd-video-renderer a#thumbnail",
+          "ytd-rich-item-renderer a#thumbnail",
+          "yt-lockup-view-model a",
+          "ytd-compact-video-renderer a#thumbnail"
+        ]
+      }
+    },
+    {
+      "id": "subscriptions",
+      "description": "go to my subscriptions",
+      "say": [
+        "(go to|open|show) (my )?subscriptions"
+      ],
+      "terms": [
+        "show channels I follow",
+        "videos from my subscriptions",
+        "what have my channels posted"
+      ],
+      "do": {
+        "open": "https://www.youtube.com/feed/subscriptions"
+      }
+    },
+    {
+      "id": "history",
+      "description": "go to my watch history",
+      "say": [
+        "(go to|open|show) (my )?(watch )?history"
+      ],
+      "terms": [
+        "recently watched videos",
+        "what I watched",
+        "videos I watched before"
+      ],
+      "do": {
+        "open": "https://www.youtube.com/feed/history"
+      }
+    },
+    {
+      "id": "watch_later",
+      "description": "open my watch later list",
+      "say": [
+        "(go to|open|show) (my )?watch later( list)?"
+      ],
+      "terms": [
+        "saved videos",
+        "videos I saved",
+        "things I want to watch later"
+      ],
+      "do": {
+        "open": "https://www.youtube.com/playlist?list=WL"
+      }
+    }
+  ]
+}

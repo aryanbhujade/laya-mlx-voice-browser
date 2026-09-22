@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from . import sites
 from .answers import _choice, _confidence, _probability
 from .policy import command_gate, complete_gate, early_intent, intent_gate, payload_gate
 from .questions import (
@@ -29,6 +30,7 @@ from .spans import (
     mentioned_site,
     spoken_scroll_amount,
     spoken_tab_direction,
+    strip_lead,
     tab_command,
     text_candidates,
     url_candidates,
@@ -41,6 +43,8 @@ _STOP = {
     "please", "tab", "that", "the", "this", "to",
 }
 _MIN_STATE_ELEMENTS = 4
+# How sure Laya must be that a site control is meant before it is used.
+SITE_ACTION_PROBABILITY = 0.5
 # "Is this a command?" and "which operation?" depend on the words, not the page body: a slim state
 # halves their latency and scored at least as well on the command set.
 _GATE_ELEMENTS = 4
@@ -368,6 +372,34 @@ class LayaEngine:
         answers: dict[str, Any] = {}
         stages: list[dict] = []
 
+        # A site control named exactly ("theater mode" on YouTube) needs no model at all.
+        exact = sites.match_phrase(strip_lead(transcript), snapshot.url)
+        if exact:
+            return ModelDecision(
+                answers={},
+                candidates={"text": text_spans, "url": urls},
+                latency_ms=0.0,
+                model=self.model_name,
+                state=state,
+                element_match=element_match,
+                site={"id": exact.action.id, "text": exact.text, "source": "rule"},
+            )
+        # Something named on the page wins over a general site control: "toggle the table of contents"
+        # is the button with that label, not Wikipedia's "scroll to the top" control.
+        _, _, clear_element = _rank_elements(transcript, snapshot.elements)
+        lexical = None if clear_element else sites.lexical_match(transcript, snapshot.url)
+        if lexical:
+            return ModelDecision(
+                answers={},
+                candidates={"text": text_spans, "url": urls},
+                latency_ms=0.0,
+                model=self.model_name,
+                state=state,
+                element_match=element_match,
+                site={"id": lexical.action.id, "text": lexical.text, "source": "lexical"},
+            )
+        pack = sites.pack_for(snapshot.url)
+
         # Stage 1: only the gate questions that explicit grammar has not already settled.
         gate = {}
         if not explicit_browser_command(transcript):
@@ -377,8 +409,28 @@ class LayaEngine:
         early = early_intent(transcript, element_match)
         if not final and not early:
             gate["complete"] = fixed["complete"]
+        unnamed = deterministic_intent(transcript, element_match=element_match) is None
+        if pack and not clear_element and unnamed:
+            site_question, site_candidates = sites.site_question(pack, transcript)
+            if site_candidates:
+                gate["site_action"] = site_question
         if gate:
             self._run(_gate_state(state), gate, answers, stages)
+
+        site_answer = answers.get("site_action") or {}
+        site_choice = _choice(site_answer)
+        site_probability = float((site_answer.get("probabilities") or {}).get(site_choice, 0.0))
+        if site_choice and site_choice != "none" and site_probability >= SITE_ACTION_PROBABILITY:
+            return ModelDecision(
+                answers=answers,
+                candidates={"text": text_spans, "url": urls},
+                latency_ms=round(sum(stage["ms"] for stage in stages), 2),
+                model=self.model_name,
+                state=state,
+                element_match=element_match,
+                stages=stages,
+                site={"id": site_choice, "text": "", "source": "model", "probability": site_probability},
+            )
 
         # Stage 2: the questions this intent needs, only once the policy would act on them.
         intent, intent_ok, _ = intent_gate(answers, transcript, element_match)

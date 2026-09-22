@@ -1,0 +1,149 @@
+{
+  "name": "Google Search",
+  "hosts": [
+    "google.com",
+    "google.co.uk",
+    "google.ca",
+    "google.com.au",
+    "google.co.in"
+  ],
+  "actions": [
+    {
+      "id": "first_result",
+      "description": "open the first search result",
+      "say": [
+        "(open|click|go to|show me) the (first|top) (result|link|search result)",
+        "(i'?m )?feeling lucky"
+      ],
+      "terms": [
+        "open the top answer",
+        "take me to the first thing",
+        "choose the best result"
+      ],
+      "do": {
+        "click_css": [
+          "#search a:has(h3)",
+          "#rso a:has(h3)"
+        ]
+      }
+    },
+    {
+      "id": "second_result",
+      "description": "open the second search result",
+      "say": [
+        "(open|click|go to) the second (result|link|search result)"
+      ],
+      "terms": [
+        "open the one after the first",
+        "choose result number two"
+      ],
+      "do": {
+        "click_css": [
+          "#search div.g:nth-of-type(2) a:has(h3)",
+          "#rso > div:nth-child(2) a:has(h3)"
+        ]
+      }
+    },
+    {
+      "id": "next_page",
+      "description": "go to the next page of results",
+      "say": [
+        "(go to |show )?(the )?next page( of results)?",
+        "more results"
+      ],
+      "terms": [
+        "keep looking through results",
+        "show more search results",
+        "show me more results",
+        "load more results"
+      ],
+      "do": {
+        "click_css": [
+          "#pnnext",
+          "a[aria-label='Next page']"
+        ]
+      }
+    },
+    {
+      "id": "previous_page",
+      "description": "go to the previous page of results",
+      "say": [
+        "(go to |show )?(the )?previous page( of results)?"
+      ],
+      "terms": [
+        "go back a page of results",
+        "show the earlier search results"
+      ],
+      "do": {
+        "click_css": [
+          "#pnprev",
+          "a[aria-label='Previous page']"
+        ]
+      }
+    },
+    {
+      "id": "images",
+      "description": "show image results",
+      "say": [
+        "(show |switch to |go to )?(the )?images?( results| tab)?"
+      ],
+      "terms": [
+        "I want to see pictures",
+        "only show pictures"
+      ],
+      "do": {
+        "click": [
+          "images"
+        ]
+      }
+    },
+    {
+      "id": "videos",
+      "description": "show video results",
+      "say": [
+        "(show |switch to |go to )?(the )?videos( results| tab)?"
+      ],
+      "terms": [
+        "I want to watch results",
+        "only show videos"
+      ],
+      "do": {
+        "click": [
+          "videos"
+        ]
+      }
+    },
+    {
+      "id": "news",
+      "description": "show news results",
+      "say": [
+        "(show |switch to |go to )?(the )?news( results| tab)?"
+      ],
+      "terms": [
+        "show me recent coverage",
+        "only show news articles"
+      ],
+      "do": {
+        "click": [
+          "news"
+        ]
+      }
+    },
+    {
+      "id": "shopping",
+      "description": "show shopping results",
+      "say": [
+        "(show |switch to |go to )?(the )?shopping( results| tab)?"
+      ],
+      "terms": [
+        "show things I can buy",
+        "compare products for sale"
+      ],
+      "do": {
+        "click": [
+          "shopping"
+        ]
+      }
+    }
+  ]
+}

@@ -5,8 +5,18 @@ import threading
 import time
 from typing import Any
 
-from .browser import BrowserSessionLost, NoMedia, StalePage, pick_tab
-from .page import CANDIDATES_JS, MEDIA_JS, SNAPSHOT_JS, decision_still_valid, snapshot_from_raw
+from .browser import BrowserSessionLost, NoMedia, StalePage, Unavailable, pick_tab
+from .page import (
+    CANDIDATES_JS,
+    FOCUS_FIELD_JS,
+    MEDIA_JS,
+    SCROLL_TO_JS,
+    SITE_FIND_JS,
+    SNAPSHOT_JS,
+    decision_still_valid,
+    parse_keys,
+    snapshot_from_raw,
+)
 from .questions import MAX_OBSERVED_ELEMENTS
 from .safety import deterministic_destructive
 from .types import Snapshot, Tab
@@ -92,6 +102,61 @@ class SafariBrowser:
         snapshot = snapshot_from_raw(raw, tabs=self._tabs(raw))
         self._last_snapshot = snapshot
         return snapshot
+
+    def _press_keys(self, spec: str) -> None:
+        from selenium.webdriver.common.action_chains import ActionChains
+        from selenium.webdriver.common.keys import Keys
+
+        modifiers, key = parse_keys(spec)
+        special = {
+            "Enter": Keys.ENTER,
+            "Escape": Keys.ESCAPE,
+            "Tab": Keys.TAB,
+            "ArrowLeft": Keys.LEFT,
+            "ArrowUp": Keys.UP,
+            "ArrowRight": Keys.RIGHT,
+            "ArrowDown": Keys.DOWN,
+        }
+        names = {
+            "shift": Keys.SHIFT,
+            "alt": Keys.ALT,
+            "option": Keys.ALT,
+            "ctrl": Keys.CONTROL,
+            "control": Keys.CONTROL,
+            "meta": Keys.COMMAND,
+            "cmd": Keys.COMMAND,
+            "command": Keys.COMMAND,
+        }
+        held = [names[modifier] for modifier in modifiers]
+        chain = ActionChains(self.driver)
+        for modifier in held:
+            chain.key_down(modifier)
+        chain.send_keys(special.get(key["key"], key["text"] or key["key"]))
+        for modifier in reversed(held):
+            chain.key_up(modifier)
+        chain.perform()
+
+    def _site(self, action: dict[str, Any]) -> None:
+        do = action["do"]
+        if "key" in do:
+            self._press_keys(do["key"])
+        elif "click" in do or "click_css" in do:
+            if not self.driver.execute_script(SITE_FIND_JS, do.get("click", []), do.get("click_css", [])):
+                raise Unavailable(f"there is no {action['id'].replace('_', ' ')} control on this page")
+            self.driver.execute_script("document.querySelector('[data-laya-press]')?.click()")
+        elif "fill" in do:
+            if not self.driver.execute_script(FOCUS_FIELD_JS, do["fill"]):
+                raise Unavailable("that field is not on this page")
+            from selenium.webdriver.common.action_chains import ActionChains
+            from selenium.webdriver.common.keys import Keys
+
+            text = action.get("text", "") + (Keys.ENTER if do.get("submit") else "")
+            ActionChains(self.driver).send_keys(text).perform()
+        elif "scroll_to" in do:
+            if not self.driver.execute_script(SCROLL_TO_JS, do["scroll_to"]):
+                raise Unavailable("that section is not on this page")
+        else:
+            raise ValueError(f"unsupported site action: {do}")
 
     def _tabs(self, raw: dict[str, Any]) -> tuple[Tab, ...]:
         current = self.driver.current_window_handle
@@ -179,7 +244,9 @@ class SafariBrowser:
                 self.driver.execute_script("scrollTo(0, 0)")
             else:
                 direction = -1 if action.get("direction") == "up" else 1
-                pixels = 320 if amount == "little" else 0.82 * self.driver.execute_script("return innerHeight")
+                pixels = (
+                    320 if amount == "little" else 0.82 * self.driver.execute_script("return innerHeight")
+                )
                 self.driver.execute_script("scrollBy(0, arguments[0])", direction * pixels)
         elif kind == "back":
             self.driver.back()
@@ -193,6 +260,8 @@ class SafariBrowser:
                 raise NoMedia(f"nothing on this page can {action['command'].replace('_', ' ')}")
             if done.get("press"):
                 self.driver.execute_script("document.querySelector('[data-laya-press]')?.click()")
+        elif kind == "site":
+            self._site(action)
         elif kind == "new_tab":
             self.driver.switch_to.new_window("tab")
         elif kind == "close_tab":

@@ -1,0 +1,30 @@
+{
+  "name": "Etsy",
+  "hosts": ["etsy.com"],
+  "actions": [
+    {"id": "first_result", "description": "open the first product result",
+     "say": ["(open|click|show me) the (first|top) (product|listing|result|item)"],
+     "terms": ["look at the first listing", "choose the top item"],
+     "do": {"click_css": ["[data-listing-id] a[href*='/listing/']", "a.listing-link"]}},
+    {"id": "next_page", "description": "go to the next page of products",
+     "say": ["(go to |show )?(the )?next page( of products| of results)?", "more products"],
+     "terms": ["keep looking at products", "show more handmade items"],
+     "do": {"click_css": ["a[aria-label='Next page']", "a.wt-action-group__item[rel=next]"]}},
+    {"id": "cart", "description": "open the shopping cart",
+     "say": ["(open|show|go to) (my |the )?(shopping )?(cart|basket)"],
+     "terms": ["what is in my basket", "show what I am buying"],
+     "do": {"open": "https://www.etsy.com/cart"}},
+    {"id": "favorites", "description": "open my favorite items",
+     "say": ["(open|show|go to) (my |the )?favou?rites"],
+     "terms": ["show the products I saved", "things I liked on Etsy"],
+     "do": {"open": "https://www.etsy.com/your/favorites"}},
+    {"id": "add_to_cart", "description": "add this product to the cart", "confirm": true,
+     "say": ["add (this|it|the product|the item) to (my |the )?(cart|basket)"],
+     "terms": ["put this in my basket", "save this product in my cart"],
+     "do": {"click": ["add to cart", "add to basket"]}},
+    {"id": "favorite", "description": "favorite this product", "confirm": true,
+     "say": ["favou?rite (this|it|the product|the item)", "save this to (my )?favou?rites"],
+     "terms": ["save this item for later", "add this to the things I like"],
+     "do": {"click": ["add to favorites", "favorite"]}}
+  ]
+}

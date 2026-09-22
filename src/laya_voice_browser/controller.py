@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import parse_qs, quote_plus, urlparse
 
-from .browser import Browser, BrowserSessionLost, NoMedia, StalePage
+from .browser import Browser, BrowserSessionLost, StalePage, Unavailable
 from .laya import LayaEngine
 from .policy import evaluate
 from .questions import DEBOUNCE_SECONDS, SITE_SEARCH
@@ -421,8 +421,8 @@ class StreamingController:
             self._status("unsure", label="Page changed", ttl=2.0)
             self.announce("the page changed before execution; discarded the stale decision")
             return
-        except NoMedia as exc:
-            self._status("unsure", label="No video here", ttl=2.0)
+        except Unavailable as exc:
+            self._status("unsure", label="Not on this page", ttl=2.0)
             self.announce(str(exc))
             return
         finished = time.perf_counter()

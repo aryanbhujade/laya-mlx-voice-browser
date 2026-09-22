@@ -27,8 +27,11 @@ class StalePage(RuntimeError):
     """The page changed after the decision; the action was not executed."""
 
 
-class NoMedia(RuntimeError):
-    """A media command on a page with no video or audio to control."""
+class Unavailable(RuntimeError):
+    """The page has nothing to carry out this command (no video to mute, no Reply button…)."""
+
+
+NoMedia = Unavailable
 
 
 class BrowserSessionLost(RuntimeError):

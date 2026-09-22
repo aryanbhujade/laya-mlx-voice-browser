@@ -59,6 +59,8 @@ class ModelDecision:
     element_match: bool = False
     stages: list[dict[str, Any]] = field(default_factory=list)
     lexical_target: str | None = None
+    # A site-pack control: {"id", "text", "source": "rule" | "model"}.
+    site: dict[str, Any] | None = None
     # Best 2-3 elements when the target is uncertain, for numbered on-page choices.
     target_candidates: list[str] = field(default_factory=list)
 

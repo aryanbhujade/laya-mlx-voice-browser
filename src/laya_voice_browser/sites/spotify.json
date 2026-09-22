@@ -1,0 +1,26 @@
+{
+  "name": "Spotify",
+  "hosts": ["open.spotify.com"],
+  "actions": [
+    {"id": "play_pause", "description": "play or pause the music", "instant": true,
+     "say": ["(play|pause|resume|stop)( the)?( music| song| track)?"],
+     "terms": ["stop the sound for a moment", "continue the music", "start the song again"],
+     "do": {"click_css": ["[data-testid=control-button-playpause]"]}},
+    {"id": "next_track", "description": "skip to the next song",
+     "say": ["(next|skip)( this)?( song| track)?", "skip"],
+     "terms": ["play something else", "move to the following song"],
+     "do": {"click_css": ["[data-testid=control-button-skip-forward]"]}},
+    {"id": "previous_track", "description": "go back to the previous song",
+     "say": ["(previous|last)( song| track)", "go back a (song|track)"],
+     "terms": ["play the song before this", "go back one track"],
+     "do": {"click_css": ["[data-testid=control-button-skip-back]"]}},
+    {"id": "shuffle", "description": "turn shuffle on or off",
+     "say": ["(turn (on|off) )?shuffle( (on|off))?"],
+     "terms": ["mix up the song order", "play these in random order"],
+     "do": {"click_css": ["[data-testid=control-button-shuffle]"]}},
+    {"id": "repeat", "description": "change repeat mode",
+     "say": ["(turn (on|off) )?repeat( (on|off))?"],
+     "terms": ["loop this song", "keep playing this again"],
+     "do": {"click_css": ["[data-testid=control-button-repeat]"]}}
+  ]
+}

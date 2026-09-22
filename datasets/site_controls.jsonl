@@ -1,0 +1,37 @@
+{"site":"YouTube","url":"https://www.youtube.com/watch?v=x","transcript":"please make the video bigger","expected":"theater","path":"rule"}
+{"site":"YouTube","url":"https://www.youtube.com/watch?v=x","transcript":"can you expand the player a bit","expected":"theater","path":"model"}
+{"site":"YouTube","url":"https://www.youtube.com/watch?v=x","transcript":"put this in a small player for me","expected":"miniplayer","path":"model"}
+{"site":"YouTube","url":"https://www.youtube.com/watch?v=x","transcript":"show me the discussion under the video","expected":"comments","path":"model"}
+{"site":"YouTube","url":"https://www.youtube.com/","transcript":"what have the channels I follow posted lately","expected":"subscriptions","path":"model"}
+{"site":"YouTube","url":"https://www.youtube.com/","transcript":"find the videos I watched before","expected":"history","path":"model"}
+{"site":"YouTube","url":"https://www.youtube.com/","transcript":"take me to my saved videos","expected":"watch_later","path":"model"}
+{"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"could you get rid of this email but keep it","expected":"archive","path":"rule"}
+{"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"move this out of my inbox without erasing it","expected":"archive","path":"model"}
+{"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"I need to write back to everyone here","expected":"reply_all","path":"model"}
+{"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"show messages I have not sent yet","expected":"drafts","path":"model"}
+{"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"where are the messages I sent","expected":"sent","path":"model"}
+{"site":"GitHub","url":"https://github.com/openai/codex","transcript":"where are people reporting bugs for this project","expected":"issues","path":"model"}
+{"site":"GitHub","url":"https://github.com/openai/codex","transcript":"show changes waiting for code review","expected":"pulls","path":"model"}
+{"site":"GitHub","url":"https://github.com/openai/codex","transcript":"did the latest continuous integration build pass","expected":"actions","path":"model"}
+{"site":"GitHub","url":"https://github.com/openai/codex","transcript":"where can I download the latest published version","expected":"releases","path":"model"}
+{"site":"Wikipedia","url":"https://en.wikipedia.org/wiki/Alan_Turing","transcript":"where did the article get its information from","expected":"references","path":"model"}
+{"site":"Wikipedia","url":"https://en.wikipedia.org/wiki/Alan_Turing","transcript":"take me back to the start of this article","expected":"contents","path":"rule"}
+{"site":"Spotify","url":"https://open.spotify.com/track/x","transcript":"mix the songs up for me","expected":"shuffle","path":"model"}
+{"site":"Spotify","url":"https://open.spotify.com/track/x","transcript":"keep playing this song again and again","expected":"repeat","path":"model"}
+{"site":"Netflix","url":"https://www.netflix.com/watch/x","transcript":"get me past the opening","expected":"skip_intro","path":"model"}
+{"site":"Amazon","url":"https://www.amazon.co.uk/dp/x","transcript":"what do people who bought this think","expected":"reviews","path":"model"}
+{"site":"Amazon","url":"https://www.amazon.co.uk/dp/x","transcript":"put this product in my basket","expected":"add_to_cart","path":"model"}
+{"site":"Amazon","url":"https://www.amazon.co.uk/s?k=keyboard","transcript":"let me see the top product","expected":"first_result","path":"model"}
+{"site":"eBay","url":"https://www.ebay.co.uk/sch/i.html","transcript":"show the listings I saved earlier","expected":"watchlist","path":"model"}
+{"site":"Etsy","url":"https://www.etsy.com/listing/x","transcript":"save this item among the things I like","expected":"favorite","path":"model"}
+{"site":"YouTube","url":"https://www.youtube.com/watch?v=x","transcript":"that was interesting","expected":null,"path":"negative"}
+{"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"I archived that message yesterday","expected":null,"path":"negative"}
+{"site":"GitHub","url":"https://github.com/openai/codex","transcript":"the build status looks good","expected":null,"path":"negative"}
+{"site":"Amazon","url":"https://www.amazon.co.uk/dp/x","transcript":"this product looks expensive","expected":null,"path":"negative"}
+{"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"my inbox is a complete disaster honestly","expected":null,"path":"negative"}
+{"site":"GitHub","url":"https://github.com/ml-explore/mlx","transcript":"did you see the pull request he opened","expected":null,"path":"negative"}
+{"site":"Amazon","url":"https://www.amazon.com/s?k=x","transcript":"the cart was full of stuff I did not need","expected":null,"path":"negative"}
+{"site":"YouTube","url":"https://www.youtube.com/watch?v=x","transcript":"make the player take up more of the page","expected":"theater","path":"lexical"}
+{"site":"YouTube","url":"https://www.youtube.com/watch?v=x","transcript":"pop this video out into a small window","expected":"miniplayer","path":"lexical"}
+{"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"write an email to my boss","expected":"compose","path":"lexical"}
+{"site":"Google Search","url":"https://www.google.com/search?q=x","transcript":"show me more results please","expected":"next_page","path":"lexical"}

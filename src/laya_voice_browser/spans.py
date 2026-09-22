@@ -282,11 +282,13 @@ def text_candidates(transcript: str) -> list[str]:
 
 
 def normalize_spoken_url(text: str) -> str:
-    value = clean(text).casefold()
-    value = re.sub(r"\bget\s+(?:hub|up)\s*\.?\s*com\b", "github.com", value)
-    value = re.sub(r"\s+dot\s+", ".", value)
+    """Spoken addresses written out ("example dot com slash Page" → "example.com/Page"). Case is kept:
+    paths and queries are case-sensitive (a YouTube video id); `as_https` lowercases only the host."""
+    value = clean(text)
+    value = re.sub(r"\bget\s+(?:hub|up)\s*\.?\s*com\b", "github.com", value, flags=re.I)
+    value = re.sub(r"\s+dot\s+", ".", value, flags=re.I)
     value = re.sub(r"\s*\.\s*", ".", value)
-    value = re.sub(r"\s+slash\s+", "/", value)
+    value = re.sub(r"\s+slash\s+", "/", value, flags=re.I)
     return value
 
 
@@ -305,7 +307,7 @@ def as_https(value: str) -> str:
     parsed = urlparse(candidate)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError("Not a valid HTTP(S) URL")
-    return candidate
+    return parsed._replace(scheme=parsed.scheme.lower(), netloc=parsed.netloc.lower()).geturl()
 
 
 def mentioned_site(transcript: str) -> str | None:

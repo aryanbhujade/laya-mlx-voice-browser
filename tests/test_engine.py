@@ -119,3 +119,30 @@ def test_state_puts_elements_before_page_text():
     state, *_ = engine._state("click images", PAGE, [])
     assert list(state) == ["transcript", "safari", "interactive_elements", "visible_page_text"]
     assert state["interactive_elements"][0].startswith("e06 link")
+
+
+def test_exact_natural_site_term_skips_the_model():
+    engine = RecordingEngine()
+    page = Snapshot("https://www.youtube.com/watch?v=x", "Video", "", (), "youtube")
+    decision = engine.decide("please make the video bigger", page, final=True)
+    assert engine.asked == []
+    assert decision.site == {"id": "theater", "text": "", "source": "rule"}
+
+
+def test_unrelated_speech_does_not_ask_the_site_control_question():
+    canned = {
+        "is_command": {"type": "noul", "noul": 0.1},
+        "intent": {"type": "choice", "choice": "none", "confidence": 0.9},
+    }
+    engine = RecordingEngine(canned)
+    page = Snapshot("https://www.youtube.com/watch?v=x", "Video", "", (), "youtube")
+    engine.decide("that was interesting", page, final=True)
+    assert engine.asked == [["intent", "is_command"]]
+
+
+def test_clear_natural_site_request_skips_the_model():
+    engine = RecordingEngine()
+    page = Snapshot("https://www.youtube.com/watch?v=x", "Video", "", (), "youtube")
+    decision = engine.decide("can you expand the player a bit", page, final=True)
+    assert engine.asked == []
+    assert decision.site == {"id": "theater", "text": "", "source": "lexical"}
