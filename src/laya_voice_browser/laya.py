@@ -416,7 +416,7 @@ class LayaEngine:
             gate["complete"] = fixed["complete"]
         unnamed = deterministic_intent(transcript, element_match=element_match) is None
         if pack and not clear_element and unnamed:
-            site_question, site_candidates = sites.site_question(pack, transcript)
+            site_question, site_candidates = sites.site_question(pack, transcript, snapshot.url)
             if site_candidates:
                 gate["site_action"] = site_question
         if gate:

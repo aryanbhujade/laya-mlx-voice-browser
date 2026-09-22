@@ -22,7 +22,11 @@
           "like this video",
           "i like this"
         ]
-      }
+      },
+      "paths": [
+        "^/watch",
+        "^/shorts/"
+      ]
     },
     {
       "id": "dislike",
@@ -41,7 +45,11 @@
           "dislike this video",
           "i dislike this"
         ]
-      }
+      },
+      "paths": [
+        "^/watch",
+        "^/shorts/"
+      ]
     },
     {
       "id": "subscribe",
@@ -79,7 +87,10 @@
       ],
       "do": {
         "key": "t"
-      }
+      },
+      "paths": [
+        "^/watch"
+      ]
     },
     {
       "id": "miniplayer",
@@ -100,7 +111,10 @@
       ],
       "do": {
         "key": "i"
-      }
+      },
+      "paths": [
+        "^/watch"
+      ]
     },
     {
       "id": "comments",
@@ -119,7 +133,11 @@
           "#comments",
           "ytd-comments"
         ]
-      }
+      },
+      "paths": [
+        "^/watch",
+        "^/shorts/"
+      ]
     },
     {
       "id": "first_video",
@@ -139,7 +157,12 @@
           "yt-lockup-view-model a",
           "ytd-compact-video-renderer a#thumbnail"
         ]
-      }
+      },
+      "paths": [
+        "^/results",
+        "^/$",
+        "^/feed"
+      ]
     },
     {
       "id": "subscriptions",

@@ -55,6 +55,7 @@ pack's `terms` is the fix that always works, because rule and lexical matches sk
 | `confirm` | Always require spoken confirmation |
 | `side_effect` | Require confirmation when an inferred/model match selects it |
 | `instant` | May run before the speech recognizer marks the phrase final |
+| `paths` | URL path prefixes this control exists on; omit when it exists site-wide |
 
 Supported `do` operations:
 
@@ -84,8 +85,13 @@ Open templates support:
 - Keep `instant` for closed, harmless controls whose meaning cannot change with more words.
 - Prefer doing nothing over selecting a weak match.
 - A bare universal command ("go back", "forward", "reload", "new tab", "close tab", "scroll down")
-  always belongs to the browser, so a `say` pattern or `term` that matches one on its own is
-  ignored. Qualify it — "forward this email", "scroll down to the comments" — and it works.
+  always belongs to the browser, whatever trailing politeness or "a bit more" follows it, so a `say`
+  pattern or `term` that matches one on its own is ignored. Qualify it — "forward this email",
+  "scroll down to the comments" — and it works.
+- Scope a control that only exists on some pages with `paths`, so it cannot be chosen where it does
+  not exist. YouTube's comments and theater mode are `["^/watch", "^/shorts/"]`; on a list of search
+  results the control is absent and "scroll down" is an ordinary scroll. Entries are plain prefixes
+  anchored with `^`, so a pack can be read without evaluating a regular expression.
 
 ## Durable selectors
 

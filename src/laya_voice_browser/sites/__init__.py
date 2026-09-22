@@ -14,7 +14,9 @@ Each `*.json` file in this folder describes one site:
           "do": {"key": "t"},                             # how to do it (see below)
           "confirm": false,                               # true: always say "confirm" first
           "side_effect": false,                           # true: confirm when Laya (not a phrase) chose it
-          "instant": false                                # true: may run before the phrase ends
+          "instant": false,                               # true: may run before the phrase ends
+          "paths": ["^/watch"]                            # only on these URL paths; omit if
+                                                          # the control exists site-wide
         }
       ]
     }
@@ -54,6 +56,15 @@ class SiteAction:
     confirm: bool = False
     instant: bool = False
     side_effect: bool = False
+    # Paths this control exists on. A player control is meaningless on a page with no player, so
+    # "scroll down" on a list of search results is an ordinary scroll, not "jump to the comments".
+    paths: tuple[re.Pattern, ...] = ()
+
+    def on_page(self, url: str) -> bool:
+        if not self.paths:
+            return True
+        path = urlparse(url).path or "/"
+        return any(pattern.search(path) for pattern in self.paths)
 
 
 @dataclass(frozen=True)
@@ -64,6 +75,10 @@ class SitePack:
 
     def serves(self, host: str) -> bool:
         return any(host == known or host.endswith("." + known) for known in self.hosts)
+
+    def available(self, url: str) -> tuple[SiteAction, ...]:
+        """The controls this page actually has."""
+        return tuple(action for action in self.actions if action.on_page(url))
 
 
 @lru_cache(maxsize=1)
@@ -85,6 +100,7 @@ def packs() -> tuple[SitePack, ...]:
                 confirm=bool(item.get("confirm")),
                 instant=bool(item.get("instant")),
                 side_effect=bool(item.get("side_effect")),
+                paths=tuple(re.compile(pattern) for pattern in item.get("paths", [])),
             )
             for item in raw["actions"]
         )
@@ -117,7 +133,7 @@ def match_phrase(phrase: str, url: str) -> SiteMatch | None:
     if not pack:
         return None
     phrase = strip_courtesy(phrase)
-    for action in pack.actions:
+    for action in pack.available(url):
         for pattern in action.say:
             found = pattern.match(phrase)
             if found:
@@ -215,7 +231,7 @@ def lexical_match(phrase: str, url: str) -> SiteMatch | None:
         return overlap, overlap / max(1, size)
 
     ranked = sorted(
-        ((score(action), action) for action in pack.actions),
+        ((score(action), action) for action in pack.available(url)),
         key=lambda item: item[0],
         reverse=True,
     )
@@ -233,7 +249,7 @@ def lexical_match(phrase: str, url: str) -> SiteMatch | None:
     return SiteMatch(best)
 
 
-def site_question(pack: SitePack, transcript: str) -> tuple[dict, list[SiteAction]]:
+def site_question(pack: SitePack, transcript: str, url: str = "") -> tuple[dict, list[SiteAction]]:
     """Laya's choice between this site's controls, ranked by overlap with what was said and capped
     at nine plus "none" (larger choices fall in a badly calibrated confidence bucket)."""
     words = _tokens(transcript)
@@ -255,7 +271,8 @@ def site_question(pack: SitePack, transcript: str) -> tuple[dict, list[SiteActio
             return action.description
         return examples[0]
 
-    ranked = [action for action in sorted(pack.actions, key=overlap, reverse=True) if overlap(action) > 0][
+    candidates = pack.available(url) if url else pack.actions
+    ranked = [action for action in sorted(candidates, key=overlap, reverse=True) if overlap(action) > 0][
         :_MAX_OPTIONS
     ]
     question = {
@@ -268,7 +285,9 @@ def site_question(pack: SitePack, transcript: str) -> tuple[dict, list[SiteActio
 
 def action_by_id(url: str, action_id: str) -> SiteAction | None:
     pack = pack_for(url)
-    return next((action for action in pack.actions if action.id == action_id), None) if pack else None
+    if not pack:
+        return None
+    return next((action for action in pack.available(url) if action.id == action_id), None)
 
 
 def resolve_open(template: str, url: str, text: str = "") -> str:

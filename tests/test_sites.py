@@ -40,14 +40,31 @@ def test_pack_lookup_accepts_www_and_subdomains():
     assert sites.pack_for("https://example.com/") is None
 
 
+def page_for(action, host):
+    """A URL where this control exists: `paths` entries are plain prefixes, so "^/watch" → /watch."""
+    path = action.paths[0].pattern.lstrip("^").rstrip("$") if action.paths else "/"
+    return f"https://www.{host}{path or '/'}"
+
+
+def test_path_scopes_are_plain_prefixes():
+    # page_for above, and anyone reading a pack, rely on this.
+    for pack in sites.packs():
+        for action in pack.actions:
+            for pattern in action.paths:
+                assert pattern.pattern.startswith("^"), (pack.name, action.id, pattern.pattern)
+                assert not set(pattern.pattern[1:]) & set("[](|)*+?{}"), (
+                    pack.name, action.id, pattern.pattern,
+                )
+
+
 def test_every_natural_term_resolves_to_its_own_action():
     for pack in sites.packs():
-        url = f"https://www.{pack.hosts[0]}/"
         for action in pack.actions:
+            url = page_for(action, pack.hosts[0])
             for term in action.terms:
                 match = sites.match_phrase(term, url)
-                assert match is not None, (pack.name, action.id, term)
-                assert match.action.id == action.id, (pack.name, action.id, term)
+                assert match is not None, (pack.name, action.id, term, url)
+                assert match.action.id == action.id, (pack.name, action.id, term, url)
 
 
 def test_user_facing_loose_phrases_resolve_without_the_model():
@@ -230,3 +247,56 @@ def test_everyday_words_still_match_when_they_are_the_whole_request():
 def test_archiving_an_email_is_gated_when_it_was_inferred():
     action = sites.action_by_id("https://mail.google.com/mail/u/0/#inbox", "archive")
     assert action is not None and action.side_effect
+
+
+RESULTS = "https://www.youtube.com/results?search_query=esp32"
+WATCH = "https://www.youtube.com/watch?v=abc"
+
+
+def test_a_player_control_does_not_exist_on_a_list_of_results():
+    available = {action.id for action in sites.pack_for(RESULTS).available(RESULTS)}
+    assert "comments" not in available and "theater" not in available
+    assert {"comments", "theater"} <= {a.id for a in sites.pack_for(WATCH).available(WATCH)}
+    assert sites.action_by_id(RESULTS, "comments") is None
+    assert sites.action_by_id(WATCH, "comments") is not None
+
+
+def test_scrolling_is_browser_control_however_it_is_asked():
+    # Logged for real: "Could you scroll down please" jumped to YouTube's comments instead.
+    for phrase in [
+        "scroll down",
+        "scroll down please",
+        "Could you scroll down please",
+        "can you scroll down",
+        "Can you scroll down more",
+        "Can you scroll down even more",
+        "scroll down a bit",
+    ]:
+        assert universal_command(phrase), phrase
+
+
+def test_asking_for_the_comments_still_reaches_them_on_a_video():
+    assert not universal_command("scroll down to the comments")
+    match = sites.lexical_match("scroll down to the comments", WATCH)
+    assert match is not None and match.action.id == "comments"
+    # …and does nothing on a page that has none.
+    assert sites.lexical_match("scroll down to the comments", RESULTS) is None
+
+
+def test_a_polite_universal_command_works_in_the_direct_style(monkeypatch):
+    # Logged for real, with the direct style selected: "Can you scroll down more" scored 0.4256 on
+    # the model's is_command head and was dropped. Universal controls are harmless and reversible,
+    # and the whole utterance is the command, so the style should not decide this.
+    import laya_voice_browser.spans as spans_module
+
+    monkeypatch.setattr(spans_module, "polite_style", lambda: False)
+    for phrase, intent in [
+        ("Can you scroll down more", "scroll_down"),
+        ("Could you scroll down please", "scroll_down"),
+        ("can you go back", "go_back"),
+        ("would you please reload", "reload"),
+    ]:
+        assert spans_module.deterministic_intent(phrase) == intent, phrase
+    # Conversation and site-specific requests are still left alone.
+    assert spans_module.deterministic_intent("could you go back to what you said") is None
+    assert spans_module.deterministic_intent("can you scroll down to the comments") is None

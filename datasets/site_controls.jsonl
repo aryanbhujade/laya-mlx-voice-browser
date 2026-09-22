@@ -38,3 +38,6 @@
 {"site":"Google Search","url":"https://www.google.com/search?q=lamps","transcript":"i need to go back to the office later","expected":null,"path":"none"}
 {"site":"Spotify","url":"https://open.spotify.com/","transcript":"i need to go back to the office later","expected":null,"path":"none"}
 {"site":"Gmail","url":"https://mail.google.com/mail/u/0/#inbox","transcript":"forward this email","expected":"forward","path":"rule"}
+{"site":"YouTube","url":"https://www.youtube.com/results?search_query=esp32+videos","transcript":"Could you scroll down please","expected":null,"path":"none"}
+{"site":"YouTube","url":"https://www.youtube.com/watch?v=abc","transcript":"can you scroll down more","expected":null,"path":"none"}
+{"site":"YouTube","url":"https://www.youtube.com/watch?v=abc","transcript":"scroll down to the comments","expected":"comments","path":"lexical"}

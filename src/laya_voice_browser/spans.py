@@ -364,14 +364,20 @@ _UNIVERSAL_PHRASE = re.compile(
     r"^(?:open\s+)?(?:a\s+)?new\s+tab$|"
     r"^close\s+(?:this|the)?\s*tab$|"
     r"^(?:switch\s+tabs?|next\s+tab|previous\s+tab|last\s+tab)$|"
-    r"^scroll\s+(?:up|down)(?:\s+a\s+(?:little|bit|lot))?$",
+    r"^scroll\s+(?:up|down)(?:\s+(?:a\s+)?(?:little|bit|lot|more|again|even\s+more))*$",
     re.I,
 )
+# "please" and "for me" are not part of the command, and neither is a trailing "thanks".
+_TRAILING_COURTESY = re.compile(r"(?:,?\s*(?:please|thanks|thank\s+you|for\s+me|now))+$", re.I)
 
 
 def universal_command(transcript: str) -> bool:
     """Whether the whole utterance is a browser command a site pack must not override."""
-    return bool(_UNIVERSAL_PHRASE.match(strip_lead(clean(transcript)).strip(" .,!?")))
+    # Politeness is stripped whatever the speaking style: this decides *which* command the words
+    # name, not whether to obey it, and the command gate still judges that.
+    phrase = strip_lead(clean(transcript), polite=True).strip(" .,!?")
+    phrase = _TRAILING_COURTESY.sub("", phrase).strip(" .,!?")
+    return bool(_UNIVERSAL_PHRASE.match(phrase))
 
 
 def explicit_browser_command(transcript: str) -> bool:
@@ -380,7 +386,10 @@ def explicit_browser_command(transcript: str) -> bool:
 
 def deterministic_intent(transcript: str, *, element_match: bool = False) -> str | None:
     """Intent from explicit grammar; `element_match` means a visible element label shares a word."""
-    value = strip_lead(transcript).casefold()
+    # "Can you scroll down more" is a command in either speaking style: the whole utterance is a
+    # universal control, and every one of them is harmless and reversible. The direct style exists
+    # for conversation like "could you go back to what you said", which is not one of these.
+    value = strip_lead(transcript, polite=True if universal_command(transcript) else None).casefold()
     if media_command(value):
         return "media"
     tabs = tab_command(value)
