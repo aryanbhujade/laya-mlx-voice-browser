@@ -89,8 +89,37 @@ _PICK_FILLER = {
 }
 
 
+_SITE_NAMES = "|".join(
+    re.escape(name)
+    for names in (*_KNOWN_SITES.values(), *_AMBIGUOUS_SITES.values())
+    for name in sorted(names, key=len, reverse=True)
+)
+# "search for cats on YouTube" says where to search, not what to search for.
+_SITE_SCOPE = re.compile(rf"\s+(?:on|in|at|from|over\s+on|using)\s+(?:the\s+)?(?:{_SITE_NAMES})\s*$", re.I)
+# A leading "on GitHub, …" is an opener naming where, not part of the command.
+_SITE_OPENER = re.compile(rf"^(?:on|in|at|over\s+on|using)\s+(?:the\s+)?(?:{_SITE_NAMES})\s*,?\s+", re.I)
+
+
 def clean(text: str) -> str:
     return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+# Apple Speech hears "GitHub" as "get up" often enough to matter, and it even revises a correct
+# partial into the wrong one. Repair it only where a site name belongs, so "how to get up early" and
+# "i need to get up" are untouched. _SITE_LEAD is the same navigation/scoping context used for
+# ambiguous site names below.
+_MISHEARD_DOMAIN = re.compile(r"\bget\s*up(?=\s*(?:\.|\s+dot\s+)\s*com\b)", re.I)
+_MISHEARD_SITE = re.compile(
+    r"\b(go\s+to|open|visit|browse|search|on|at|from|in)\s+get\s+up\b"
+    r"(?!\s+(?:early|earlier|late|now|and\s+go))",
+    re.I,
+)
+
+
+def repair_speech(transcript: str) -> str:
+    """Undo recognizer mishearings that only matter where a site name belongs."""
+    text = _MISHEARD_DOMAIN.sub("github", clean(transcript))
+    return _MISHEARD_SITE.sub(lambda found: f"{found.group(1)} GitHub", text)
 
 
 def polite_style() -> bool:
@@ -102,6 +131,11 @@ def polite_style() -> bool:
 def strip_lead(text: str, *, polite: bool | None = None) -> str:
     """Drop openers so the rules see the command itself (polite requests only in the polite style)."""
     text = _CONNECTIVES.sub("", clean(text), count=1)
+    if polite if polite is not None else polite_style():
+        text = _POLITE.sub("", text, count=1)
+    # "On GitHub, search for X" names where, then the command. mentioned_site still sees the site in
+    # the full transcript, so dropping the opener scopes the search rather than losing it.
+    text = _SITE_OPENER.sub("", text, count=1)
     if polite if polite is not None else polite_style():
         text = _POLITE.sub("", text, count=1)
     return text
@@ -248,6 +282,13 @@ def _push(items: list[str], value: str) -> None:
         items.append(value)
 
 
+
+
+def strip_site_scope(text: str) -> str:
+    """Drop a trailing "on <site>" so it does not end up inside the search query."""
+    return _SITE_SCOPE.sub("", clean(text)).strip(" ,.;:-")
+
+
 def explicit_payload(transcript: str) -> str | None:
     """The text to search or type when the command states it plainly: "search for enigma machine" →
     "enigma machine". None when the rest also names a place ("…into the search box", "…on YouTube")
@@ -260,6 +301,9 @@ def explicit_payload(transcript: str) -> str | None:
     if not matches:
         return None
     tail = text[max(matches, key=lambda item: len(item.group(0))).end() :]
+    scoped = strip_site_scope(tail)
+    if scoped != tail and scoped:
+        return scoped  # "…on YouTube" named the place; the rest is the query
     if _DESTINATION.search(tail) or mentioned_site(tail) or re.search(r"\b(?:on|in|at)\s+\w+\s*$", tail):
         return None
     candidates: list[str] = []

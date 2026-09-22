@@ -85,5 +85,56 @@ def test_plain_payloads_are_taken_by_rule_and_ambiguous_ones_left_to_the_model()
     assert explicit_payload("look up alan turing") == "alan turing"
     assert explicit_payload('type "hello world"') == "hello world"
     assert explicit_payload("type hello world into the search box") is None
-    assert explicit_payload("search for cats on youtube") is None
     assert explicit_payload("I want to learn about enigma") is None
+    # A trailing site name says where to search. Leaving this to the model produced the whole
+    # phrase as the query, so YouTube was searched for "cats on YouTube".
+    assert explicit_payload("search for cats on youtube") == "cats"
+    assert explicit_payload("search raspberry pie on github") == "raspberry pie"
+    assert explicit_payload("search for the amazon river") == "the amazon river"
+
+
+def test_github_misheard_as_get_up_is_repaired_where_a_site_belongs():
+    # Apple Speech produced all of these; it even revised a correct "GitHub" partial into "get up".
+    from laya_voice_browser.spans import mentioned_site, repair_speech
+
+    for phrase in [
+        "Search raspberry pie on get up",
+        "Can you search get up for ESP 32 projects",
+        "Search ESPN 32 projects on get up",
+        "On get up can you search for raspberry pie",
+        "open get up",
+        "go to get up dot com",
+        "visit get up.com",
+    ]:
+        assert mentioned_site(repair_speech(phrase)) == "github", phrase
+
+
+def test_getting_up_is_left_alone():
+    from laya_voice_browser.spans import repair_speech
+
+    for phrase in [
+        "search for how to get up early",
+        "i need to get up",
+        "what time do you get up",
+        "search for get up and go",
+        "remind me to get up in an hour",
+    ]:
+        assert repair_speech(phrase) == phrase, phrase
+
+
+def test_a_site_name_says_where_to_search_not_what():
+    from laya_voice_browser.spans import explicit_payload, mentioned_site, strip_lead
+
+    # Trailing scope.
+    assert explicit_payload("search for cats on youtube") == "cats"
+    assert mentioned_site("search for cats on youtube") == "youtube"
+    # Leading scope: an opener, so the rules see the command, and the site is still found.
+    assert strip_lead("On GitHub can you search for raspberry pie") == "search for raspberry pie"
+    assert explicit_payload("On GitHub can you search for raspberry pie") == "raspberry pie"
+    assert mentioned_site("On GitHub can you search for raspberry pie") == "github"
+    # Only a trailing scope phrase is dropped; a site name inside the query stays.
+    from laya_voice_browser.spans import strip_site_scope
+
+    assert strip_site_scope("github actions tutorials") == "github actions tutorials"
+    assert strip_site_scope("the amazon river") == "the amazon river"
+    assert explicit_payload("search for the amazon river") == "the amazon river"

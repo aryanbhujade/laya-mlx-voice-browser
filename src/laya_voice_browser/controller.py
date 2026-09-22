@@ -15,7 +15,13 @@ from .laya import LayaEngine
 from .policy import evaluate
 from .questions import DEBOUNCE_SECONDS, SITE_SEARCH
 from .safety import deterministic_destructive
-from .spans import clean, command_plan, remainder_after, spoken_number, strip_lead
+from .spans import (
+    command_plan,
+    remainder_after,
+    repair_speech,
+    spoken_number,
+    strip_lead,
+)
 from .status import action_kind
 from .types import PolicyResult, Snapshot, TranscriptEvent
 
@@ -114,7 +120,7 @@ class StreamingController:
         self.last_policy: PolicyResult | None = None
 
     def submit(self, event: TranscriptEvent) -> None:
-        text = clean(event.text)
+        text = repair_speech(event.text)
         if not text or self.session_lost:
             return
         with self._lock:
