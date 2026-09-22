@@ -45,6 +45,21 @@ def test_explicit_site_name_overrides_weak_model_site_head():
     assert result.action == {"type": "navigate", "url": "https://en.wikipedia.org/wiki/Main_Page"}
 
 
+def test_open_amazon_cannot_be_rerouted_by_the_model_site_head():
+    answers = base_answers("navigate_url")
+    answers["site"] = choice("github", {"github": 0.6, "amazon": 0.3, "none": 0.1})
+    decision = ModelDecision(
+        answers,
+        {"text": [], "url": []},
+        8.0,
+        "test",
+        {"transcript": "open Amazon"},
+    )
+    result = evaluate(decision, snapshot(), final=True, silent_seconds=1.0)
+    assert result.verdict == "act"
+    assert result.action == {"type": "navigate", "url": "https://www.amazon.com/"}
+
+
 def test_payload_waits_for_final_transcript():
     answers = base_answers("search_web")
     answers["text_span"] = choice("alan turing", {"alan turing": 0.9, "none": 0.1})

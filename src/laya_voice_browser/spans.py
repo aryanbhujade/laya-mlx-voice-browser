@@ -34,6 +34,7 @@ _KNOWN_SITES = {
     "youtube": ("youtube", "you tube"),
     "wikipedia": ("wikipedia",),
     "github": ("github", "git hub", "get hub", "github.com"),
+    "amazon": ("amazon.com",),
     "reddit": ("reddit",),
     "hacker_news": ("hacker news", "y combinator news"),
 }
@@ -53,6 +54,12 @@ _POLITE = re.compile(r"^(?:(?:can|could|would|will)\s+you\s+(?:please\s+)?|pleas
 # Misrecognitions accepted only right after a navigation verb: "open get up" is GitHub, but
 # "how to get up early" is not.
 _NAVIGATION_ALIASES = {"github": ("get up",)}
+# Site names that are ordinary words too. They name the site only after a navigation or shopping
+# phrase, with no article and no geography behind them: "buy batteries on amazon" is the shop,
+# while "the amazon", "search for the amazon river" and "amazon rainforest" are the place.
+_AMBIGUOUS_SITES = {"amazon": ("amazon",)}
+_SITE_LEAD = r"(?:go\s+to|open|visit|browse|shop\s+on|search|order\s+from|buy\s+from|on|at|from)"
+_NOT_THE_SITE_AFTER = r"(?:rain\s*forest|river|basin|jungle|delta|region|tribes?|reefs?|prime\s+day)"
 _CONJUNCTION = re.compile(r"\s*,?\s+(?P<conj>and\s+then|then|and)\s+", re.I)
 # After a search or typed text, "and" only starts a new command when an unmistakable command
 # follows; weak verbs (back, find, visit, enter, select) are usually part of the query.
@@ -212,7 +219,7 @@ def command_plan(transcript: str) -> list[str]:
 
     purpose = re.match(
         r"^(?P<open>(?:go\s+to|open|visit)\s+"
-        r"(?:google|duck\s*duck\s*go|you\s*tube|wikipedia|git\s*hub|reddit|hacker\s+news))"
+        r"(?:google|duck\s*duck\s*go|you\s*tube|wikipedia|git\s*hub|amazon|reddit|hacker\s+news))"
         r"\s+to\s+(?:search(?:\s+for)?|find|look\s+for|see)\s+(?P<query>.+)$",
         text,
         flags=re.I,
@@ -319,6 +326,11 @@ def mentioned_site(transcript: str) -> str | None:
         for name in names:
             if re.search(rf"\b(?:go\s+to|open|visit)\s+(?:the\s+)?{re.escape(name)}\b", value):
                 return site
+    for site, names in _AMBIGUOUS_SITES.items():
+        for name in names:
+            pattern = rf"\b{_SITE_LEAD}\s+{re.escape(name)}\b(?!\s+{_NOT_THE_SITE_AFTER}\b)"
+            if re.search(pattern, value):
+                return site
     return None
 
 
@@ -333,6 +345,7 @@ def site_for_url(url: str) -> str | None:
         "youtube": ("youtube.com", "youtu.be"),
         "wikipedia": ("wikipedia.org",),
         "github": ("github.com",),
+        "amazon": ("amazon.com", "amazon.co.uk", "amazon.in", "amazon.ca", "amazon.com.au"),
         "reddit": ("reddit.com",),
         "hacker_news": ("news.ycombinator.com",),
     }.items():

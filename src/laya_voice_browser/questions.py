@@ -49,6 +49,7 @@ SITES = {
     "youtube": "YouTube",
     "wikipedia": "Wikipedia",
     "github": "GitHub",
+    "amazon": "Amazon",
     "reddit": "Reddit",
     "hacker_news": "Hacker News",
     "other": "Another explicitly named website",
@@ -61,6 +62,7 @@ SITE_HOME = {
     "youtube": "https://www.youtube.com/",
     "wikipedia": "https://en.wikipedia.org/wiki/Main_Page",
     "github": "https://github.com/",
+    "amazon": "https://www.amazon.com/",
     "reddit": "https://www.reddit.com/",
     "hacker_news": "https://news.ycombinator.com/",
 }
@@ -73,6 +75,7 @@ SITE_SEARCH = {
     "youtube": "https://www.youtube.com/results?search_query={query}",
     "wikipedia": "https://en.wikipedia.org/w/index.php?search={query}",
     "github": "https://github.com/search?q={query}&type=repositories",
+    "amazon": "https://www.amazon.com/s?k={query}",
     "reddit": "https://www.reddit.com/search/?q={query}",
     "hacker_news": "https://hn.algolia.com/?q={query}",
 }
