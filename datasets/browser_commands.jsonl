@@ -1,0 +1,26 @@
+{"transcript":"go to wikipedia","intent":"navigate_url","is_command":true,"complete":true,"site":"wikipedia"}
+{"transcript":"open github","intent":"navigate_url","is_command":true,"complete":true,"site":"github"}
+{"transcript":"go to","intent":"none","is_command":true,"complete":false,"site":"none"}
+{"transcript":"search for Alan Turing","intent":"search_web","is_command":true,"complete":true,"site":"none"}
+{"transcript":"search YouTube for lofi hip hop","intent":"search_web","is_command":true,"complete":true,"site":"youtube"}
+{"transcript":"search for","intent":"none","is_command":true,"complete":false,"site":"none"}
+{"transcript":"click the first result","intent":"click_element","is_command":true,"complete":true,"site":"none"}
+{"transcript":"click","intent":"none","is_command":true,"complete":false,"site":"none"}
+{"transcript":"type hello world into the search box","intent":"type_into_field","is_command":true,"complete":true,"site":"none"}
+{"transcript":"press enter","intent":"press_enter","is_command":true,"complete":true,"site":"none"}
+{"transcript":"scroll down a little","intent":"scroll_down","is_command":true,"complete":true,"site":"none"}
+{"transcript":"scroll to the bottom","intent":"scroll_down","is_command":true,"complete":true,"site":"none"}
+{"transcript":"scroll back to the top","intent":"scroll_up","is_command":true,"complete":true,"site":"none"}
+{"transcript":"go back","intent":"go_back","is_command":true,"complete":true,"site":"none"}
+{"transcript":"reload the page","intent":"reload","is_command":true,"complete":true,"site":"none"}
+{"transcript":"open a new tab","intent":"open_new_tab","is_command":true,"complete":true,"site":"none"}
+{"transcript":"close this tab","intent":"close_tab","is_command":true,"complete":true,"site":"none"}
+{"transcript":"switch to the next tab","intent":"switch_tab","is_command":true,"complete":true,"site":"none"}
+{"transcript":"so anyway we should get lunch","intent":"none","is_command":false,"complete":true,"site":"none"}
+{"transcript":"that video was interesting","intent":"none","is_command":false,"complete":true,"site":"none"}
+{"transcript":"Can you open Wikipedia please","intent":"navigate_url","is_command":true,"complete":true,"site":"wikipedia"}
+{"transcript":"Can you open","intent":"none","is_command":true,"complete":false,"site":"none"}
+{"transcript":"Can you","intent":"none","is_command":true,"complete":false,"site":"none"}
+{"transcript":"Go to amazon.com please","intent":"navigate_url","is_command":true,"complete":true,"site":"other"}
+{"transcript":"I need to get up early tomorrow","intent":"none","is_command":false,"complete":true,"site":"none"}
+{"transcript":"search for how to get up early","intent":"search_web","is_command":true,"complete":true,"site":"none"}

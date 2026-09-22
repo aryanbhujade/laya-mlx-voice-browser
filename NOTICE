@@ -1,0 +1,13 @@
+This project is an independent Laya-MLX implementation inspired by the public
+designs of:
+
+- browser-use/jev-ultrafast (MIT, Copyright (c) 2026 Browser Use)
+- moritzkremb/jev-voice-browser (MIT, Copyright (c) 2026 Moritz Kremb)
+
+Reference revisions inspected during the clean implementation:
+
+- browser-use/jev-ultrafast: 1231850a0bf1a0c0341fe408ef1668dbbfdfac46
+- moritzkremb/jev-voice-browser: 198a0764395a666f8398026c0d8abdaf6d1866c5
+
+It does not contain Jev, call TypeSafe AI, or claim affiliation with those
+projects. Laya and Laya-MLX retain their own upstream licenses and notices.

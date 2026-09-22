@@ -1,0 +1,92 @@
+{
+ "url": "https://github.com/",
+ "title": "GitHub · Change is constant. GitHub keeps you ahead. · GitHub",
+ "text": "Skip to content Navigation Menu Sign in Mona the Octocat, Copilot, and Ducky float jubilantly upward from behind the GitHub product demo accompanied by a purple glow and a scattering of stars. The future of building happens together Tools and trends evolve, but collaboration endures. With GitHub, developers, agents, and code come together on one platform. Enter your email Sign up for GitHub Download GitHub Copilot app GitHub features A demonstration animation of a code editor using GitHub Copilot Chat, where the user requests GitHub Copilot to refactor duplicated logic and extract it into a reusable function for a given code snippet. CodePlanCollaborateAutomateSecure Write, test, and fix code quickly with GitHub Copilot, from simple boilerplate to complex features. GITHUB CUSTOMERS Accelerate your entire workflow From your first line of code to final deployment, GitHub provides AI and automation tools to help you build and ship better software faster. A Copilot chat window with the 'Ask' mode enabled. The user switches from 'Ask' mode to 'Agent' mode from a dropdown menu, then sends the prompt 'Update the website to allow searching for running races by name.' Copilot analyzes the codebase, then explains the required edits for three files before generating them. Copilot then confirms completion and summarizes the implemented changes for the new functionality allowing users to search races by name and view paginated, filtered results. Your AI partner everywhere. Copilot is ready to work with you at each step of the software development lifecycle. Explore GitHub Copilot Duolingo boosts developer speed by 25% with GitHub Copilot Read customer story 2025 Gartner® Magic Quadrant™ for AI Code Assistants Read industry report Automate your path to production Ship faster with secure, reliable CI/CD. Explore GitHub Actions Code instantly from anywhere Keep momentum on the go Shape your toolchain Built-in application security where found means fixed Use AI to find and fix vulnerabilities so your team can ship more secure software faster. Apply fixes in seconds. Spend less time debugging and more time building features with Copilot Autofix. Explore GitHub Advanced Security Security debt, solved. Leverage security campaigns and Copilot Autofix to reduce application vulnerabilities. Learn about GitHub Code Security Dependencies you can depend on. Update vulnerable dependencies with supported fixes for breaking changes. Learn about Dependabot Your secrets, your business. Detect, prevent, and remediate leaked secrets across your organization. Learn about GitHub Secret Protection 70% MTTR reduction with Copilot Autofix1 8.3M secret leaks stopped in the past 12 months with push protection1 Work together, achieve more From planning and discussion to code review, GitHub keeps your team’s conversation and context next to your code. Plan with clarity. Organize everything from high-level roadmaps to everyday tasks. Explore GitHub Projects “ It helps us onboard new software engineers and get them productive right away. We have all our source code, issues, and pull requests in one place... GitHub is a complete platform that frees us from menial tasks and enables us to do our best work. FABIAN FAULHABER Application manager at Mercedes-Benz Keep track of your tasks Create issues and manage projects with tools that adapt to your code. Explore GitHub Issues Share ideas and ask questions Review code changes together Fund open source projects From startups to enterprises, GitHub scales with teams of any size in any industry. By industryBy sizeBy use case Technology Figma streamlines development and strengthens security Read customer story Automotive Mercedes-Benz standardizes source code and automates onboarding Read customer story Financial services Mercado Libre cuts coding time by 50% Read customer story Explore customer stories View all solutions A subtle purple glow fades in as Mona the Octocat, Copilot, and Ducky dramatically fall into place next to one another while gazing optimistically into the distance. Millions of developers and businesses call GitHub home Whether you’re scaling your development process or just learning how to code, GitHub is where you belong. Join the world’s most widely adopted developer platform to build the technologies that shape what’s next. Enter your email Sign up for GitHub Download GitHub Copilot app Footnotes GitHub internal customer data, 2025. Site-wide Links THE DEVELOPER NEWSLETTER Get tips, technical guides, and best practices. Twice a month. Right in your inbox. Subscribe PLATFORM Features Enterprise Copilot AI Security Pricing Team Resources Roadmap Compare GitHub ECOSYSTEM Developer API Partners Education GitHub CLI GitHub Desktop GitHub Mobile GitHub Marketplace MCP Registry SUPPORT Docs Community Forum Professional Services Premium Support Skills Status Contact GitHub What is Git? Sitemap COMPANY About Why GitHub Customer Stories Blog The ReadME Project Careers Inclusion Social Impact Shop ",
+ "elements": [
+  {
+   "id": "e01",
+   "role": "button",
+   "text": "Toggle navigation",
+   "tag": "button",
+   "href": "",
+   "placeholder": "",
+   "value": "",
+   "destructive_hint": false,
+   "in_main": false,
+   "top": 16.0
+  },
+  {
+   "id": "e02",
+   "role": "link",
+   "text": "Homepage",
+   "tag": "a",
+   "href": "https://github.com/",
+   "placeholder": "",
+   "value": "",
+   "destructive_hint": false,
+   "in_main": false,
+   "top": 16.0
+  },
+  {
+   "id": "e03",
+   "role": "link",
+   "text": "Sign in",
+   "tag": "a",
+   "href": "https://github.com/login",
+   "placeholder": "",
+   "value": "",
+   "destructive_hint": true,
+   "in_main": false,
+   "top": 16.0
+  },
+  {
+   "id": "e04",
+   "role": "input",
+   "text": "you@domain.com",
+   "tag": "input",
+   "href": "",
+   "placeholder": "you@domain.com",
+   "value": "",
+   "destructive_hint": false,
+   "in_main": true,
+   "top": 383.0
+  },
+  {
+   "id": "e05",
+   "role": "button",
+   "text": "Sign up for GitHub",
+   "tag": "button",
+   "href": "",
+   "placeholder": "",
+   "value": "",
+   "destructive_hint": false,
+   "in_main": true,
+   "top": 380.0
+  },
+  {
+   "id": "e06",
+   "role": "link",
+   "text": "Download GitHub Copilot app",
+   "tag": "a",
+   "href": "https://github.com/features/ai/github-app",
+   "placeholder": "",
+   "value": "",
+   "destructive_hint": false,
+   "in_main": true,
+   "top": 448.0
+  },
+  {
+   "id": "e07",
+   "role": "link",
+   "text": "Back to top",
+   "tag": "a",
+   "href": "https://github.com/#hero",
+   "placeholder": "",
+   "value": "",
+   "destructive_hint": false,
+   "in_main": true,
+   "top": 470.0
+  }
+ ],
+ "fingerprint": "79d6d4cc2542be58b83077f69886ab999330030e701885ca70b9e417fbe4ba2f"
+}

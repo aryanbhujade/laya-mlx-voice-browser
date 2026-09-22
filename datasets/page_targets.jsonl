@@ -1,0 +1,27 @@
+{"page":"wikipedia_main","transcript":"click log in","intent":"click_element","targets":["e07"]}
+{"page":"wikipedia_main","transcript":"click create account","intent":"click_element","targets":["e06"]}
+{"page":"wikipedia_main","transcript":"open the talk page","intent":"click_element","targets":["e10"]}
+{"page":"wikipedia_main","transcript":"click view history","intent":"click_element","targets":["e13"]}
+{"page":"wikipedia_main","transcript":"click donate","intent":"click_element","targets":["e05"]}
+{"page":"wikipedia_main","transcript":"open the alison frantz article","intent":"click_element","targets":["e22","e21"]}
+{"page":"wikipedia_main","transcript":"click linear b","intent":"click_element","targets":["e25"]}
+{"page":"wikipedia_main","transcript":"click the church of the holy apostles link","intent":"click_element","targets":["e26"]}
+{"page":"wikipedia_article","transcript":"click turing machine","intent":"click_element","targets":["e32"]}
+{"page":"wikipedia_article","transcript":"open the talk page","intent":"click_element","targets":["e12"]}
+{"page":"wikipedia_article","transcript":"click the languages button","intent":"click_element","targets":["e10"]}
+{"page":"wikipedia_article","transcript":"open the algorithm link","intent":"click_element","targets":["e30"]}
+{"page":"wikipedia_article","transcript":"click cryptanalyst","intent":"click_element","targets":["e26"]}
+{"page":"wikipedia_article","transcript":"toggle the table of contents","intent":"click_element","targets":["e09"]}
+{"page":"hacker_news","transcript":"open can gzip be a language model","intent":"click_element","targets":["e12"]}
+{"page":"hacker_news","transcript":"open what sun got wrong","intent":"click_element","targets":["e61"]}
+{"page":"hacker_news","transcript":"click new","intent":"click_element","targets":["e03"]}
+{"page":"hacker_news","transcript":"open transformers explained visually","intent":"click_element","targets":["e47"]}
+{"page":"hacker_news","transcript":"click login","intent":"click_element","targets":["e10"]}
+{"page":"hacker_news","transcript":"open the spymarks article","intent":"click_element","targets":["e40"]}
+{"page":"hacker_news","transcript":"click attention is all you have","intent":"click_element","targets":["e54"]}
+{"page":"duckduckgo_results","transcript":"click the images tab","intent":"click_element","targets":["e06"]}
+{"page":"duckduckgo_results","transcript":"open the wikipedia result","intent":"click_element","targets":["e19","e21","e23","e25"]}
+{"page":"duckduckgo_results","transcript":"click news","intent":"click_element","targets":["e07"]}
+{"page":"duckduckgo_results","transcript":"open the turing archive","intent":"click_element","targets":["e20","e22"]}
+{"page":"duckduckgo_results","transcript":"click the imdb link","intent":"click_element","targets":["e24"]}
+{"page":"duckduckgo_results","transcript":"type enigma machine into the search box","intent":"type_into_field","targets":["e02"]}
