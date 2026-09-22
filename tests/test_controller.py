@@ -288,3 +288,36 @@ def test_clicks_wait_for_the_end_of_the_phrase():
     page = Snapshot("https://w.org", "W", "", (link,), "f")
     assert run_policy(decision, page, final=False, silent_seconds=0.1).verdict == "wait"
     assert run_policy(decision, page, final=True, silent_seconds=0.0).verdict == "act"
+
+
+class GoogleBlockingBrowser(FakeBrowser):
+    key = "safari"
+
+    def execute(self, action, expected_fingerprint=None):
+        self.executions.append((action, expected_fingerprint, None))
+        blocked = "google.com/search" in action.get("url", "")
+        return {"after_url": "https://www.google.com/sorry/index?continue=x" if blocked else action["url"]}
+
+
+def test_blocked_google_search_is_retried_on_duckduckgo_in_safari():
+    from laya_voice_browser.controller import google_blocked
+
+    assert google_blocked("https://www.google.com/sorry/index?continue=x")
+    assert not google_blocked("https://www.google.com/search?q=x")
+    browser = GoogleBlockingBrowser()
+    statuses = []
+    controller = StreamingController(
+        browser,
+        FakeEngine(),
+        announce=lambda _: None,
+        status=lambda state, **kw: statuses.append(kw.get("label")),
+    )
+    controller._execute(
+        {"type": "navigate", "url": "https://www.google.com/search?q=enigma+machine"},
+        event("search for enigma machine"),
+        fingerprint="page-a",
+        decision_ready=0.0,
+    )
+    controller.close()
+    assert browser.executions[-1][0]["url"] == "https://duckduckgo.com/?q=enigma+machine"
+    assert "Using DuckDuckGo" in statuses

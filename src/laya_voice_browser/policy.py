@@ -4,6 +4,7 @@ import re
 from dataclasses import replace
 from urllib.parse import parse_qs, quote_plus, urlparse
 
+from . import browsers
 from .answers import _choice, _confidence, _probability
 from .config import load as load_settings
 from .questions import (
@@ -100,8 +101,9 @@ def _build_action(intent: str, decision: ModelDecision, snapshot: Snapshot) -> t
         if not query:
             return None, "no complete search text was identified"
         site = mentioned_site(transcript) or _current_site_scope(transcript, snapshot.url)
-        engine = load_settings().search_engine
-        template = SITE_SEARCH.get(site) or SITE_SEARCH.get(engine, SITE_SEARCH["google"])
+        settings = load_settings()
+        engine = browsers.web_search_engine(settings.search_engine, browsers.resolve(settings.browser))
+        template = SITE_SEARCH.get(site) or SITE_SEARCH[engine]
         return {"type": "navigate", "url": template.format(query=quote_plus(query))}, f"search for {query}"
     if intent in {"click_element", "type_into_field", "select_option"}:
         target_answer = answers.get("target", {})

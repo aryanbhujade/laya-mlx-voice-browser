@@ -73,21 +73,25 @@ def test_search_without_named_site_uses_current_supported_site():
     }
 
 
-def test_unscoped_search_defaults_to_google():
+def test_unscoped_search_uses_duckduckgo_in_safari_and_google_elsewhere(monkeypatch, tmp_path):
+    import json
+
     answers = base_answers("search_web")
-    answers["text_span"] = choice("xyz", {"xyz": 0.9, "none": 0.1})
-    decision = ModelDecision(
-        answers,
-        {"text": ["xyz"], "url": []},
-        8.0,
-        "test",
-        {"transcript": "search for xyz"},
+    state = {"transcript": "search for xyz"}
+    decision = ModelDecision(answers, {"text": ["xyz"], "url": []}, 8.0, "test", state)
+    assert evaluate(decision, snapshot(), final=True, silent_seconds=0.0).action["url"] == (
+        "https://duckduckgo.com/?q=xyz"
     )
-    result = evaluate(decision, snapshot(), final=True, silent_seconds=0.0)
-    assert result.action == {
-        "type": "navigate",
-        "url": "https://www.google.com/search?q=xyz",
-    }
+    config = tmp_path / "chrome.json"
+    config.write_text(json.dumps({"browser": "chrome"}))
+    monkeypatch.setenv("LAYA_CONFIG", str(config))
+    assert evaluate(decision, snapshot(), final=True, silent_seconds=0.0).action["url"] == (
+        "https://www.google.com/search?q=xyz"
+    )
+    config.write_text(json.dumps({"browser": "chrome", "search_engine": "brave"}))
+    assert evaluate(decision, snapshot(), final=True, silent_seconds=0.0).action["url"] == (
+        "https://search.brave.com/search?q=xyz"
+    )
 
 
 def test_destructive_element_requires_confirmation():
@@ -211,7 +215,7 @@ def _search(transcript, query, url):
 def test_plain_search_on_an_article_searches_the_web():
     url = _search("search for guitar tabs and back tracks", "guitar tabs and back tracks",
                   "https://en.wikipedia.org/wiki/Main_Page")
-    assert url.startswith("https://www.google.com/search?q=guitar+tabs")
+    assert url.startswith("https://duckduckgo.com/?q=guitar+tabs")
 
 
 def test_search_here_stays_on_the_current_site():

@@ -9,7 +9,7 @@ struct LayaSettings: Codable, Equatable {
     var micSensitivity = "medium"
     var speakingStyle = "polite"
     var browser = "auto"
-    var searchEngine = "google"
+    var searchEngine = "auto"
     var sounds = true
     var island = true
 
@@ -120,7 +120,10 @@ let sensitivityChoices: [(String, String)] = [
     ("Medium", "medium"),
     ("High — pick up quiet speech", "high"),
 ]
-let searchChoices: [(String, String)] = [("Google", "google"), ("DuckDuckGo", "duckduckgo")]
+let searchChoices: [(String, String)] = [
+    ("Automatic — Google in Chromium, DuckDuckGo in Safari", "auto"),
+    ("Google", "google"), ("DuckDuckGo", "duckduckgo"), ("Bing", "bing"), ("Brave Search", "brave"),
+]
 
 struct BrowserOption {
     let key: String

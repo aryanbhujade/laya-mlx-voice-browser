@@ -68,6 +68,8 @@ SITE_HOME = {
 SITE_SEARCH = {
     "google": "https://www.google.com/search?q={query}",
     "duckduckgo": "https://duckduckgo.com/?q={query}",
+    "bing": "https://www.bing.com/search?q={query}",
+    "brave": "https://search.brave.com/search?q={query}",
     "youtube": "https://www.youtube.com/results?search_query={query}",
     "wikipedia": "https://en.wikipedia.org/w/index.php?search={query}",
     "github": "https://github.com/search?q={query}&type=repositories",

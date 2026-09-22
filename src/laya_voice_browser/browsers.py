@@ -18,8 +18,9 @@ _LAUNCH_SERVICES = (
 )
 
 
-def default_browser_bundle_id(preferences: Path = _LAUNCH_SERVICES) -> str:
+def default_browser_bundle_id(preferences: Path | None = None) -> str:
     """The bundle id handling https links; Safari when the user never chose another browser."""
+    preferences = preferences or _LAUNCH_SERVICES
     try:
         handlers = plistlib.loads(preferences.read_bytes()).get("LSHandlers", [])
     except (OSError, ValueError, plistlib.InvalidFileException):
@@ -41,6 +42,18 @@ def resolve(choice: str, default_bundle_id: str | None = None) -> str:
         if app.bundle_id.casefold() == bundle and app_path(app):
             return app.key
     return SAFARI  # the default browser is Safari, or one Laya cannot drive yet
+
+
+WEB_SEARCH_ENGINES = ("google", "duckduckgo", "bing", "brave")
+
+
+def web_search_engine(setting: str, backend: str) -> str:
+    """The engine for a plain "search for …". Automatic: Google in the Chromium window (which can be
+    signed in, and where a Google check can be solved by hand), DuckDuckGo in Safari's automation
+    window, which starts signed out every time and cannot show a solvable check."""
+    if setting in WEB_SEARCH_ENGINES:
+        return setting
+    return "duckduckgo" if backend == SAFARI else "google"
 
 
 def open_browser(key: str) -> Browser:

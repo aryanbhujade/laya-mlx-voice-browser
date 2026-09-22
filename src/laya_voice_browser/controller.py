@@ -8,11 +8,12 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import parse_qs, quote_plus, urlparse
 
 from .browser import Browser, BrowserSessionLost, StalePage
 from .laya import LayaEngine
 from .policy import evaluate
-from .questions import DEBOUNCE_SECONDS
+from .questions import DEBOUNCE_SECONDS, SITE_SEARCH
 from .safety import deterministic_destructive
 from .spans import clean, command_plan, remainder_after, spoken_number, strip_lead
 from .status import action_kind
@@ -23,6 +24,12 @@ CHOICE_TTL_SECONDS = 12.0
 MAX_CONSUMED_UTTERANCES = 32
 _CONFIRM = {"confirm", "yes", "yes confirm", "do it", "go ahead"}
 _CANCEL = {"cancel", "no", "never mind", "stop"}
+
+
+def google_blocked(url: str) -> bool:
+    """Google's "unusual traffic" page (google.com/sorry/…)."""
+    parsed = urlparse(url)
+    return ".google." in f".{parsed.hostname or ''}" and parsed.path.startswith("/sorry")
 
 
 def _unconsumed(text: str, consumed: str) -> str | None:
@@ -438,6 +445,8 @@ class StreamingController:
                 self._consumed.popitem(last=False)
         if had_choice:
             self._clear_badges()
+        if google_blocked(outcome.get("after_url", "")) and self._recover_from_google_check(action):
+            return
         self._status("done", ttl=1.2)
         self.announce(f"executed: {action['type']} -> {outcome['after_url']}")
         self._trace({"execution": item})
@@ -482,6 +491,21 @@ class StreamingController:
                 self._status_sink(state, **details)
             except Exception:
                 pass
+
+    def _recover_from_google_check(self, action: dict[str, Any]) -> bool:
+        """Google answered a search with its "unusual traffic" check. In Safari's automation window it
+        cannot be solved, so run the same search on DuckDuckGo; elsewhere, ask the user to solve it."""
+        self.announce(f"executed: {action['type']} -> Google's \"unusual traffic\" check")
+        query = parse_qs(urlparse(str(action.get("url", ""))).query).get("q", [""])[0]
+        if getattr(self.browser, "key", None) == "safari" and query:
+            self.announce("Google's check cannot be solved in Safari's automation window; using DuckDuckGo")
+            self._status("acting", kind="search", label="Using DuckDuckGo")
+            fallback = SITE_SEARCH["duckduckgo"].format(query=quote_plus(query))
+            self.browser.execute({"type": "navigate", "url": fallback})
+            self._status("done", ttl=1.2)
+        else:
+            self._status("confirm", label="Solve Google's check", ttl=10.0)
+        return True
 
     def _expire_pending_locked(self) -> None:
         if self._pending and self._clock() > self._pending.expires_at:

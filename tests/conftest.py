@@ -3,5 +3,8 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def isolated_settings(tmp_path, monkeypatch):
-    """Tests never read the developer's real Laya settings."""
+    """Tests never read the developer's real settings or default browser (Safari is assumed)."""
+    from laya_voice_browser import browsers
+
     monkeypatch.setenv("LAYA_CONFIG", str(tmp_path / "config.json"))
+    monkeypatch.setattr(browsers, "_LAUNCH_SERVICES", tmp_path / "no-default-browser.plist")

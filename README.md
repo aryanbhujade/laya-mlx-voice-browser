@@ -98,7 +98,7 @@ Everything is in the menu-bar icon:
 | **Speaking Style** | *Polite* understands "could you please open YouTube?" instantly. *Direct* treats only commands like "open YouTube" as instant commands, so conversation ("could you go back to what you said") is much less likely to trigger anything. |
 | **Microphone Sensitivity** | *Low* ignores background noise and other voices; *High* picks up quiet speech. |
 | **Browser** | Automatic (your default browser), Safari, or any installed Chromium browser. |
-| **Search Engine** | Google or DuckDuckGo for plain "search for…" commands. |
+| **Search Engine** | For plain "search for…" commands: *Automatic* (Google in Chromium, DuckDuckGo in Safari — see below), Google, DuckDuckGo, Bing or Brave Search. |
 | **Sounds** | The start/stop chime. |
 | **Show Notch Island** | The island beside the notch. |
 
@@ -107,6 +107,23 @@ The menu also has Start/Stop Listening, Open Log and Quit LayaBrowse.
 **Chromium browsers** open in their own window with a dedicated LayaBrowse profile, next to your everyday
 browser (Chromium does not allow voice control of your main profile). Sign in there once and it stays signed
 in. **Safari** uses its automation window, which starts signed out each time.
+
+### Google's "unusual traffic" check
+
+Google sometimes answers a search with a CAPTCHA when the traffic looks automated: a signed-out browser with
+no history, or many quick searches in a row. LayaBrowse never tries to solve or get around it. Instead:
+
+- In the **Chromium window**, sign into Google once; signed-in browsers are rarely challenged. If a check does
+  appear, the island says *Solve Google's check* — the window is yours, so solve it and carry on.
+- In **Safari's automation window** a check cannot be solved (Safari locks that window, and it starts signed
+  out every time), so plain searches go to DuckDuckGo there by default. If Google is chosen and blocks a
+  search, LayaBrowse runs the same search on DuckDuckGo and tells you.
+- Asking for a site by name ("search YouTube for…") always searches that site.
+
+**Safari's automation window can also get stuck** after "Stop Session" or when it closes mid-command: new
+sessions then time out until Safari restarts. The island says *Restart Safari* — quit Safari (⌘Q) and
+double-tap again. Setting **Safari ▸ Settings ▸ General ▸ Safari opens with** to *All windows from last
+session* brings your tabs back. Chromium browsers do not have this limitation.
 
 ## Performance
 

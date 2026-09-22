@@ -18,7 +18,7 @@ class Settings:
     mic_sensitivity: str = "medium"
     speaking_style: str = "polite"
     browser: str = "auto"
-    search_engine: str = "google"
+    search_engine: str = "auto"
     sounds: bool = True
     island: bool = True
 
