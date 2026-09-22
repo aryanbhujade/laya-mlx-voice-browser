@@ -78,6 +78,7 @@ final class SpeechController {
             tap.start()
             doubleTap = tap
         }
+        log("shortcut ready: \(option.instruction.lowercased())")
     }
 
     private func stopHotkey() {
@@ -89,6 +90,7 @@ final class SpeechController {
     // MARK: voice control
 
     func toggleListening() {
+        log("shortcut pressed")
         if voiceControlActive {
             stopVoiceControl()
         } else {

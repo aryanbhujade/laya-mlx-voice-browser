@@ -75,7 +75,13 @@ final class ModifierDoubleTap {
         monitors.removeAll()
     }
 
+    private var reportedDelivery = false
+
     private func handle(_ event: NSEvent) {
+        if !reportedDelivery {
+            reportedDelivery = true
+            log("modifier key events are arriving")
+        }
         guard event.keyCode == keycode else { return }
         let down = event.modifierFlags.contains(flag)
         defer { wasDown = down }

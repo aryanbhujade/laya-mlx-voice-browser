@@ -18,8 +18,20 @@ class HelperQuit(RuntimeError):
     """The user chose Quit in the Laya menu-bar item."""
 
 
+def _true_case(path: Path) -> Path:
+    """The path as the folders are actually named now. macOS paths ignore case, so a folder renamed
+    only in case (Laya-mlx… → laya-mlx…) still resolves under its old spelling."""
+    fixed = Path(path.anchor)
+    for part in path.parts[1:]:
+        try:
+            fixed /= next(name for name in os.listdir(fixed) if name.casefold() == part.casefold())
+        except (OSError, StopIteration):
+            fixed /= part
+    return fixed
+
+
 def project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    return _true_case(Path(__file__).resolve().parents[2])
 
 
 def app_bundle(root: Path | None = None) -> Path:

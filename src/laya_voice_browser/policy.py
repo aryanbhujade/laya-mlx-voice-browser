@@ -26,7 +26,9 @@ from .spans import (
 )
 from .types import ModelDecision, PolicyResult, Snapshot
 
-_PAYLOAD_INTENTS = {"search_web", "type_into_field", "select_option"}
+# Intents whose words describe *what* to act on, so they wait for the end of the phrase: a search
+# query, dictated text, or the element to click ("click create…" must not click "Create" early).
+_PAYLOAD_INTENTS = {"search_web", "type_into_field", "select_option", "click_element"}
 # Only these act on page content; navigation, history, scroll and tabs cannot submit or change anything.
 _PAGE_ACTIONS = {"click", "type", "select", "press_enter"}
 # Explicit commands no further words can change or make dangerous, so they may run mid-speech.

@@ -115,10 +115,8 @@ def install(*, prepare_model: bool = True) -> int:
         return 2
     print(
         "Installed. LayaBrowse now runs in the background and starts at login.\n"
-        "macOS will ask to allow LayaBrowse for the microphone, speech recognition, Input Monitoring and\n"
-        "Accessibility (turn LayaBrowse on in the list that opens). The menu-bar icon shows anything\n"
-        "missing.\n"
-        "Then double-tap left Control anywhere to talk.\n"
+        "macOS will ask to allow LayaBrowse to use the microphone and speech recognition.\n"
+        "Then double-tap left Control anywhere to talk (change the shortcut in the menu-bar icon).\n"
         f"Logs: {log_path()}",
         flush=True,
     )

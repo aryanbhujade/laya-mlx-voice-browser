@@ -14,7 +14,7 @@ from .laya import LayaEngine
 from .policy import evaluate
 from .questions import DEBOUNCE_SECONDS
 from .safety import deterministic_destructive
-from .spans import clean, command_plan, remainder_after, spoken_number
+from .spans import clean, command_plan, remainder_after, spoken_number, strip_lead
 from .status import action_kind
 from .types import PolicyResult, Snapshot, TranscriptEvent
 
@@ -23,6 +23,24 @@ CHOICE_TTL_SECONDS = 12.0
 MAX_CONSUMED_UTTERANCES = 32
 _CONFIRM = {"confirm", "yes", "yes confirm", "do it", "go ahead"}
 _CANCEL = {"cancel", "no", "never mind", "stop"}
+
+
+def _unconsumed(text: str, consumed: str) -> str | None:
+    """What is left of `text` after an already-executed prefix, also when one side has had its
+    opener ("and can you …") removed by the command planner and the other has not."""
+    for said, done in ((text, consumed), (text, strip_lead(consumed, polite=True)),
+                       (strip_lead(text, polite=True), strip_lead(consumed, polite=True))):
+        remainder = remainder_after(said, done)
+        if remainder is not None:
+            return remainder
+    return None
+
+
+def _browser_problem(exc: Exception) -> str:
+    """A short island label for why the browser could not be used."""
+    if "connecting to a Safari instance" in str(exc):
+        return "Restart Safari"
+    return "Browser failed"
 
 
 def endpoint_hint(policy: PolicyResult) -> str | None:
@@ -94,7 +112,7 @@ class StreamingController:
             return
         with self._lock:
             consumed = self._consumed.get(event.utterance_id)
-        remainder = remainder_after(text, consumed) if consumed else None
+        remainder = _unconsumed(text, consumed) if consumed else None
         if remainder is not None:
             if len(remainder.split()) < 2:
                 return
@@ -212,7 +230,7 @@ class StreamingController:
             if generation != self._generation:
                 return
             consumed = self._consumed.get(event.utterance_id)
-            remainder = remainder_after(event.text, consumed) if consumed else None
+            remainder = _unconsumed(event.text, consumed) if consumed else None
             if remainder is not None:
                 if len(remainder.split()) < 2:
                     return None
@@ -318,8 +336,11 @@ class StreamingController:
         except BrowserSessionLost:
             raise
         except Exception as exc:
-            self._status("error", ttl=2.5)
-            self.announce(f"error: {type(exc).__name__}: {exc}")
+            if "Safari" in str(exc) or "browser" in str(exc).casefold():
+                self._report_browser_problem(exc)
+            else:
+                self._status("error", ttl=2.5)
+            self.announce(f"error: {type(exc).__name__}: {str(exc)[:300]}")
             self._trace(
                 {
                     "at": self._clock(),
@@ -432,7 +453,18 @@ class StreamingController:
         try:
             ensure()
         except Exception as exc:
-            self._status("error", label="Browser failed", ttl=3.0)
+            self._report_browser_problem(exc)
+
+    def _report_browser_problem(self, exc: Exception) -> None:
+        label = _browser_problem(exc)
+        self._status("error", label=label, ttl=5.0)
+        if label == "Restart Safari":
+            self.announce(
+                "Safari is still tied to an earlier automation session. Quit Safari (⌘Q) and "
+                "double-tap again; Safari reopens your windows if 'Safari opens with' is set to "
+                "'All windows from last session'."
+            )
+        else:
             self.announce(f"could not open the browser: {exc}")
 
     def _endpoint(self, hint: str | None) -> None:

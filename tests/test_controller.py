@@ -266,3 +266,25 @@ def test_mid_sentence_evaluations_tell_the_app_how_finished_the_phrase_sounds():
     assert endpoint_hint(dictating) == "likely_complete"
     assert endpoint_hint(PolicyResult("wait", "", reasons=reasons(("intent", False)))) == "incomplete"
     assert endpoint_hint(PolicyResult("ignore", "")) is None
+
+
+def test_polite_opener_removed_by_the_planner_does_not_replay_an_action():
+    from laya_voice_browser.controller import _unconsumed
+
+    assert _unconsumed("do the freeze frame one", "And can you do the freeze frame") == "one"
+    assert _unconsumed("And can you do the freeze frame one", "And can you do the freeze frame") == "one"
+    assert _unconsumed("go back", "open youtube") is None
+
+
+def test_clicks_wait_for_the_end_of_the_phrase():
+    from laya_voice_browser.policy import evaluate as run_policy
+    from laya_voice_browser.types import Element
+
+    base = answers("click_element")
+    decision = ModelDecision(
+        base, {"text": [], "url": []}, 5.0, "t", {"transcript": "click create"}, lexical_target="e01"
+    )
+    link = Element("e01", "link", "Create account", "a", href="https://w.org/c")
+    page = Snapshot("https://w.org", "W", "", (link,), "f")
+    assert run_policy(decision, page, final=False, silent_seconds=0.1).verdict == "wait"
+    assert run_policy(decision, page, final=True, silent_seconds=0.0).verdict == "act"

@@ -19,6 +19,12 @@ if CommandLine.arguments.contains("--benchmark-speech") {
 let arguments = CommandLine.arguments
 let environment = ProcessInfo.processInfo.environment
 let serviceMode = arguments.contains("--service")
+
+// Opened by the user (Finder, Spotlight, Dock): hand over to the installed background service, which
+// owns the Python backend. A copy started here would have no backend and silently do nothing.
+if !serviceMode && environment["LAYA_PARENT_PID"] == nil {
+    startInstalledService()
+}
 var settings = LayaSettings.load()
 
 let localeID = environment["LAYA_SPEECH_LOCALE"] ?? Locale.current.identifier
