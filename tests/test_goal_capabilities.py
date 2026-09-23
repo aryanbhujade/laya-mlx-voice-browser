@@ -384,17 +384,74 @@ def test_a_negated_control_offers_nothing_to_do(text):
 
 
 @pytest.mark.parametrize("text", ["open the Talk page", "open View history", "show pull requests"])
-def test_a_link_on_the_page_is_not_a_tab_or_scroll_outcome(text):
-    # Live run: "open the Talk page" opened a blank tab and verified it. With no in-page link contract
-    # the honest answer is to clarify, not to offer whichever controls happen to exist.
-    assert contract_options(Goal("g", text), TABBED) == {}
+def test_a_link_on_the_page_is_a_link_outcome_not_a_tab_or_scroll(text):
+    # Live run: "open the Talk page" opened a blank tab and verified it, because only controls were
+    # offered. It is a link: that is the only outcome offered for it now.
+    assert {c.kind for c in contract_options(Goal("g", text), TABBED).values()} == {"open_link"}
 
 
 @pytest.mark.parametrize("text,kinds", [
     ("close this tab", {"close_tab", "switch_tab"}),
-    ("open a new tab", {"new_tab", "switch_tab"}),
+    ("open a new tab", {"new_tab", "switch_tab", "open_link"}),
     ("switch to the GitHub tab", {"switch_tab"}),
     ("and scroll down", {"scroll_up", "scroll_down"}),
 ])
 def test_a_control_is_offered_when_its_own_words_are_spoken(text, kinds):
     assert {c.kind for c in contract_options(Goal("g", text), TABBED).values()} == kinds
+
+
+def _link(id, text, href, role="link"):
+    from laya_voice_browser.types import Element
+    return Element(id=id, role=role, text=text, tag="a", href=href)
+
+
+REPO = Snapshot(
+    "https://github.com/fastapi/fastapi", "fastapi/fastapi", "text",
+    (_link("e1", "Issues 3", "https://github.com/fastapi/fastapi/issues"),
+     _link("e2", "Pull requests", "https://github.com/fastapi/fastapi/pulls"),
+     _link("e3", "Code", "https://github.com/fastapi/fastapi")),
+    "fp",
+)
+
+
+def test_link_options_merge_page_links_with_pack_navigation():
+    from laya_voice_browser.goal_contracts import link_options
+
+    urls = {c.action["url"]: c for c in link_options(REPO).values()}
+    # The page's own link wins a shared URL; the pack adds destinations the page does not show.
+    assert urls["https://github.com/fastapi/fastapi/issues"].label == "Issues 3 (link)"
+    assert urls["https://github.com/fastapi/fastapi/releases"].source == "pack"
+    # A link to where the browser already is would verify having done nothing.
+    assert "https://github.com/fastapi/fastapi" not in urls
+
+
+def test_repository_templates_are_not_built_off_a_repository_page():
+    from laya_voice_browser.goal_contracts import link_options
+
+    search = Snapshot("https://github.com/search?q=x&type=repositories", "Search", "text", (), "fp")
+    assert not [c for c in link_options(search).values() if c.source == "pack"]
+
+
+def test_a_negated_link_request_offers_nothing():
+    assert contract_options(Goal("g", "please don't open issues"), REPO) == {}
+
+
+def test_a_link_outcome_verifies_only_at_its_own_destination():
+    from laya_voice_browser.goal_contracts import GoalContract, verify
+
+    contract = GoalContract("github", "open_link", expected_url="https://github.com/fastapi/fastapi/issues")
+    there = replace(REPO, url="https://github.com/fastapi/fastapi/issues/")
+    assert verify(contract, there).satisfied
+    assert not verify(contract, replace(REPO, url="https://github.com/fastapi/fastapi/pulls")).satisfied
+    assert not verify(contract, replace(there, title="", text="", elements=())).satisfied
+
+
+def test_a_chosen_link_is_the_only_tool_offered():
+    from laya_voice_browser.goal_contracts import GoalContract
+
+    goal = Goal("g", "open Issues", contract=GoalContract(
+        "github", "open_link", expected_url="https://github.com/fastapi/fastapi/issues", link_label="Issues"))
+    groups = action_space(goal, REPO)
+    assert list(groups) == ["CLICK"]
+    [(key, candidate)] = groups["CLICK"].items()
+    assert candidate.action == {"type": "navigate", "url": "https://github.com/fastapi/fastapi/issues"}

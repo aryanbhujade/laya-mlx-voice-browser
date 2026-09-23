@@ -115,6 +115,7 @@ class GoalEngine(LayaEngine):
             "switch_tab": "Switch to another existing browser tab.",
             "scroll_up": "Scroll up on the current page.",
             "scroll_down": "Scroll down on the current page.",
+            "open_link": "Open a link or a named part of this site, such as Talk, Issues or Pull requests.",
         }
         options = {c.kind: descriptions[c.kind] for c in contracts.values()}
         options["unsupported"] = "Not a command, ambiguous, or these outcomes omit part of the request"
@@ -153,6 +154,20 @@ class GoalEngine(LayaEngine):
             if tab == "none":
                 raise UncertainDecision("Which tab should I switch to?")
             remaining = [c for c in remaining if c.target_tab == tab]
+        if picked == "open_link":
+            from .goal_contracts import link_options
+            from .goals import Candidate
+
+            links = link_options(page)
+            if not links:
+                raise UncertainDecision("There is no link on this page to open")
+            # Laya may refuse: the least-bad link is not the requested one.
+            links["none"] = Candidate("None of these is the requested link", {"type": "none"}, source="none")
+            chosen = self._target(goal, page, links, result)
+            if chosen.source == "none":
+                raise UncertainDecision("Which link should I open?")
+            remaining[0].expected_url = chosen.action["url"]
+            remaining[0].link_label = chosen.label
         goal.contract = remaining[0]
         goal.contract.new_tab = bool(re.search(r"\bnew\s+tab\b", goal.text, re.I))
         goal.contract.initial_tabs = tuple(t.id for t in page.tabs)

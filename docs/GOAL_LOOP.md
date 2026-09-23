@@ -58,9 +58,20 @@ checked against every observation, so the loop stops on evidence rather than on 
 Verification checks that the **chosen** outcome happened, not that it was the one meant, so the proposal
 step carries correctness. A tab or scroll contract is offered only when its own words are spoken, as a
 search needs a query and a result needs a result clause; a negated control ("don't close this tab") is
-vetoed. Links on the current page ("open the Talk page", "open Issues") have no contract yet, so they
-clarify. Before this, a broad live run had "please don't close this tab" close a tab and "open the Talk
+vetoed. Before this, a broad live run had "please don't close this tab" close a tab and "open the Talk
 page" open a blank one, both reported as verified.
+
+**Links** — "open the Talk page", "show pull requests". A link on the page and a navigation the site pack
+declares (GitHub's issues or releases, YouTube's history) both end at a URL, so they are one outcome:
+Laya chooses among the page's links and the pack's destinations, or "none of these", and the loop checks
+the browser arrived. Offered only when navigation is spoken and not negated. Pack templates that need a
+path, such as GitHub's owner/repository, are offered only on a page that has one.
+
+On four real page snapshots from the live run, 8 of 12 link requests picked the right link, 3 abstained
+and 1 was confidently wrong ("show the edit history" chose Edit). Asking in groups of 6 or 9 turned
+abstentions into wrong links, and putting the pack's longer labels first was also worse, so neither is
+used. **For links, verification proves the browser reached the link Laya chose, not that it was the one
+meant**, so a wrong choice is reported as done. The destination is a navigation, never a submission.
 
 After a search is verified, the numbered-result argument is bound to the observed URL. Only tools compatible
 with remaining work are offered; Laya still chooses whether to act, wait or report a blocker. An early DONE

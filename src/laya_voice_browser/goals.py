@@ -156,6 +156,13 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
         return {"CLICK": {f"result:{goal.contract.ordinal}": Candidate(
             f"Open requested result {goal.contract.ordinal}",
             {"type": "navigate", "url": goal.contract.expected_url}, source="capability")}}
+    # Bound like a numbered result: which link was part of the outcome Laya chose.
+    if goal.contract and goal.contract.kind == "open_link":
+        if not goal.contract.expected_url:
+            return {}
+        return {"CLICK": {"link": Candidate(
+            goal.contract.label(), {"type": "navigate", "url": goal.contract.expected_url},
+            source="capability")}}
     # A model-selected primitive outcome only admits compatible tools. Do not ask a second
     # question to choose between closing a tab, clicking a video and going back.
     if goal.contract and not goal.contract.site:

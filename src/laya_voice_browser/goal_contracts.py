@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import parse_qs, unquote, urlparse
 
-from .goals import Goal, browser_blocker, literal_spans, scope
+from .goals import Candidate, Goal, browser_blocker, literal_spans, safe_click, scope
 from .sites import browsing_probes
 from .types import Snapshot
 
@@ -28,8 +28,11 @@ class GoalContract:
     target_tab: str = ""
     initial_url: str = ""
     initial_scroll: float = 0
+    link_label: str = ""
 
     def label(self) -> str:
+        if self.kind == "open_link":
+            return f"Open {self.link_label}" if self.link_label else "Open a link on this page"
         if self.kind in {"close_tab", "new_tab", "switch_tab", "scroll_up", "scroll_down"}:
             return self.kind.replace("_", " ") + (f" {self.target_tab}" if self.target_tab else "")
         if self.kind == "open_site":
@@ -130,6 +133,8 @@ _CONTROL_WORDS = {
     "close_tab": re.compile(r"\bclose\b", re.I),
     "switch_tab": re.compile(r"\btabs?\b", re.I),
 }
+# Opening a link is offered only when navigation is spoken, like every other outcome.
+_NAVIGATE_WORDS = re.compile(r"\b(?:open|click|show|view|visit|see|go\s+to|take\s+me\s+to)\b", re.I)
 # A veto, like missing_payload: a negated control is not an instruction to do anything.
 _NEGATED = re.compile(r"\b(?:don'?t|do\s+not|never|no\s+need\s+to)\b", re.I)
 
@@ -140,6 +145,50 @@ _ORDINALS = {"first": 1, "1st": 1, "top": 1, "second": 2, "2nd": 2, "third": 3, 
 def spoken_ordinals(text: str) -> list[int]:
     """Result numbers literally spoken, like the query span. Extraction, not a choice between them."""
     return sorted({n for word, n in _ORDINALS.items() if re.search(rf"\b{word}\b", text, re.I)})
+
+
+def _url_key(url: str) -> str:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").removeprefix("www.")
+    return f"{host}{parsed.path.rstrip('/')}?{parsed.query}#{parsed.fragment}"
+
+
+def link_options(page: Snapshot) -> dict[str, Candidate]:
+    """Where a visible link, or a navigation the site pack declares, would take the browser.
+
+    Both end at a URL, so both are verified the same way; this merges pack navigation into the same
+    choice as the page's own links. Laya chooses among them. Nothing here ranks or matches words.
+    """
+    from . import sites
+
+    options: dict[str, Candidate] = {}
+    seen = {_url_key(page.url)}  # a link to where the browser already is would verify having done nothing
+    for element in page.elements:
+        label = (element.text or "").strip()
+        if not element.href or not label or not safe_click(element, page):
+            continue
+        key = _url_key(element.href)
+        if key not in seen:
+            seen.add(key)
+            options[element.id] = Candidate(f"{label[:60]} (link)", {"type": "navigate", "url": element.href})
+    # The page's own links come first and win a shared URL. Putting the pack's longer labels first was
+    # measured and was worse on real pages (6/12 right with 2 wrong links, against 8/12 with 1).
+    pack = sites.pack_for(page.url)
+    for action in pack.available(page.url) if pack else ():
+        template = action.do.get("open")
+        if not template or "{text}" in template or action.confirm or action.side_effect:
+            continue
+        # Path placeholders only mean something on a page that has them: GitHub's {1}/{2} are a
+        # repository's owner and name, and on a search or topic page they would build a wrong URL.
+        if "{1}" in template and not result_url(scope(page.url) or "", page.url):
+            continue
+        url = sites.resolve_open(template, page.url)
+        key = _url_key(url)
+        if key not in seen:
+            seen.add(key)
+            options[f"pack:{action.id}"] = Candidate(
+                f"{pack.name}: {action.description}", {"type": "navigate", "url": url}, source="pack")
+    return options
 
 
 def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
@@ -181,7 +230,11 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
                 for tab in page.tabs:
                     if not tab.active:
                         options[f"tab:{tab.id}"] = GoalContract("", "switch_tab", target_tab=tab.id)
-        # Nothing spoken maps to a control: clarify rather than fall through to reopening the site,
+        # "switch to the GitHub tab" names a browser tab, not a link; "open X in a new tab" is a link.
+        tab_command = "close_tab" in spoken or ("switch_tab" in spoken and "new_tab" not in spoken)
+        if _NAVIGATE_WORDS.search(navigation_text) and not tab_command:
+            options["open_link"] = GoalContract(scope(page.url) or "", "open_link")
+        # Nothing spoken maps to an outcome: clarify rather than fall through to reopening the site,
         # which would verify immediately and report success for having done nothing.
         return options
     if len(sites) != 1 or sites[0] not in definitions():
@@ -211,6 +264,14 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
 
 def verify(contract: GoalContract, page: Snapshot) -> Verification:
     """Called on every observed state, including after the last permitted action."""
+    if contract.kind == "open_link":
+        if browser_blocker(page):
+            return Verification(False, "browser challenge")
+        if contract.new_tab and not any(t.active and t.id not in contract.initial_tabs for t in page.tabs):
+            return Verification(False, "requested new tab not active")
+        arrived = bool(contract.expected_url) and _url_key(page.url) == _url_key(contract.expected_url)
+        ready = arrived and bool(page.title and (page.text or page.elements))
+        return Verification(ready, "requested link open" if ready else "requested link not open")
     ids = {t.id for t in page.tabs}
     if contract.kind == "close_tab":
         closed = (bool(contract.initial_active_tab) and contract.initial_active_tab not in ids
