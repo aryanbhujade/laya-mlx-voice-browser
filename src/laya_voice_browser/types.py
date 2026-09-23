@@ -16,6 +16,11 @@ class Element:
     destructive_hint: bool = False
     in_main: bool = False
     top: float = 0.0
+    input_type: str = ""
+    disabled: bool = False
+    readonly: bool = False
+    checked: bool | None = None
+    expanded: bool | None = None
 
     def compact(self) -> str:
         label = self.text or self.placeholder or self.value or self.tag
@@ -39,6 +44,9 @@ class Snapshot:
     elements: tuple[Element, ...]
     fingerprint: str
     tabs: tuple[Tab, ...] = ()
+    document_id: str = ""
+    scroll_y: float = 0.0
+    can_scroll_down: bool = False
 
 
 @dataclass(frozen=True)

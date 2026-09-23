@@ -225,12 +225,16 @@ class SafariBrowser:
             if target and target.href and target.href != before_url:
                 self._wait_for_navigation(before_url)
         elif kind == "type":
+            from selenium.webdriver.common.action_chains import ActionChains
             from selenium.webdriver.common.keys import Keys
 
             element = self._element(action["target_id"])
             element.click()
-            element.send_keys(Keys.COMMAND, "a")
-            element.send_keys(action["text"])
+            # Safari can retain a modifier across Element.send_keys calls. Release
+            # Command explicitly before sending literal text, or letters become shortcuts.
+            ActionChains(self.driver).key_down(Keys.COMMAND).send_keys("a").key_up(Keys.COMMAND).send_keys(
+                action["text"]
+            ).perform()
         elif kind == "press_enter":
             from selenium.webdriver.common.action_chains import ActionChains
             from selenium.webdriver.common.keys import Keys

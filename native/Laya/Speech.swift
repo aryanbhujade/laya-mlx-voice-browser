@@ -153,6 +153,9 @@ final class SpeechController {
     private func stopVoiceControl() {
         guard voiceControlActive else { return }
         voiceControlActive = false
+        // Cancel goal-loop work before finishSegment can emit a late final transcript.
+        // The standard backend safely ignores this new signal.
+        Output.signal("voice_off")
         silenceTimer?.invalidate()
         silenceTimer = nil
         island.hide()

@@ -104,3 +104,39 @@ def test_lazy_content_elsewhere_does_not_cancel_an_action():
     assert not decision_still_valid(decided, moved, "before", click)  # e01 is now a different element
     assert not decision_still_valid(decided, left, "before", click)
     assert not decision_still_valid(None, loaded_more, "before", click)
+
+
+def test_typing_releases_command_before_literal_text(monkeypatch):
+    from selenium.webdriver.common.keys import Keys
+
+    calls = []
+
+    class Chain:
+        def __init__(self, driver):
+            pass
+
+        def key_down(self, key):
+            calls.append(("down", key))
+            return self
+
+        def key_up(self, key):
+            calls.append(("up", key))
+            return self
+
+        def send_keys(self, value):
+            calls.append(("keys", value))
+            return self
+
+        def perform(self):
+            calls.append(("perform",))
+
+    class Field:
+        def click(self):
+            calls.append(("focus",))
+
+    monkeypatch.setattr("selenium.webdriver.common.action_chains.ActionChains", Chain)
+    browser = SafariBrowser(driver=FakeDriver())
+    monkeypatch.setattr(browser, "_element", lambda _: Field())
+    browser.execute({"type": "type", "target_id": "e1", "text": "Mercury"})
+    assert calls == [("focus",), ("down", Keys.COMMAND), ("keys", "a"),
+                     ("up", Keys.COMMAND), ("keys", "Mercury"), ("perform",)]

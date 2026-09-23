@@ -12,9 +12,9 @@ from .types import Element, Snapshot, Tab
 SNAPSHOT_JS = r"""
 const destructive = /\b(buy|purchase|pay|place order|delete|remove|send|submit|publish|confirm|sign in|log in)\b/i;
 const selectors = [
-  'a[href]', 'button', 'input:not([type="hidden"])', 'textarea', 'select',
+  'a[href]', 'button', 'input:not([type="hidden"]):not([type="password"]):not([type="file"])', 'textarea', 'select',
   '[role="button"]', '[role="link"]', '[role="tab"]', '[role="option"]',
-  '[contenteditable="true"]'
+  '[contenteditable="true"]', '[role="searchbox"]', '[role="combobox"]'
 ].join(',');
 const visible = (el) => {
   const r = el.getBoundingClientRect();
@@ -24,16 +24,23 @@ const visible = (el) => {
 };
 const label = (el) => (el.getAttribute('aria-label') || el.innerText || el.value ||
   el.placeholder || el.title || el.name || '').replace(/\s+/g, ' ').trim().slice(0, 100);
-document.querySelectorAll('[data-laya-id]').forEach((el) => el.removeAttribute('data-laya-id'));
-let n = 0;
-const elements = [...document.querySelectorAll(selectors)].filter(visible).map((el) => {
-  let id = el.getAttribute('data-laya-id');
-  if (!id) { id = `e${String(++n).padStart(2, '0')}`; el.setAttribute('data-laya-id', id); }
+// Stable node identities survive re-observation; never reuse an index for a replacement node.
+const registry = window.__layaNodes ||= {ids: new WeakMap(), next: 0};
+const elements = [...document.querySelectorAll(selectors)]
+  .filter((el) => !['password', 'file'].includes(el.type) && visible(el)).map((el) => {
+  let id = registry.ids.get(el);
+  if (!id) { id = `e${String(++registry.next).padStart(2, '0')}`; registry.ids.set(el, id); }
+  el.setAttribute('data-laya-id', id);
   const text = label(el);
   return {
     id,
     role: el.getAttribute('role') || ({A:'link',BUTTON:'button',INPUT:'input',TEXTAREA:'textbox',SELECT:'select'}[el.tagName] || el.tagName.toLowerCase()),
-    tag: el.tagName.toLowerCase(), text, placeholder: el.placeholder || '', value: el.value || '',
+    tag: el.tagName.toLowerCase(), text, placeholder: el.placeholder || '',
+    value: el.type === 'password' ? '' : (el.value || ''),
+    input_type: el.type || '', disabled: Boolean(el.disabled || el.closest('[inert]') || el.getAttribute('aria-disabled') === 'true'),
+    readonly: Boolean(el.readOnly),
+    checked: ['checkbox', 'radio'].includes(el.type) ? el.checked : null,
+    expanded: el.hasAttribute('aria-expanded') ? el.getAttribute('aria-expanded') === 'true' : null,
     href: el.href ? new URL(el.href, location.href).href.slice(0, 180) : '',
     destructive_hint: destructive.test(text),
     in_main: Boolean(el.closest('main,[role="main"],article')),
@@ -43,6 +50,8 @@ const elements = [...document.querySelectorAll(selectors)].filter(visible).map((
 return {
   url: location.href,
   title: document.title,
+  document_id: String(performance.timeOrigin), scroll_y: scrollY,
+  can_scroll_down: scrollY + innerHeight < document.documentElement.scrollHeight - 4,
   text: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 5000),
   elements
 };
@@ -287,6 +296,11 @@ def snapshot_from_raw(raw: dict[str, Any], *, tabs: tuple[Tab, ...] = ()) -> Sna
             destructive_hint=bool(item.get("destructive_hint")),
             in_main=bool(item.get("in_main")),
             top=float(item.get("top", 0.0)),
+            input_type=str(item.get("input_type", "")),
+            disabled=bool(item.get("disabled", False)),
+            readonly=bool(item.get("readonly", False)),
+            checked=item.get("checked"),
+            expanded=item.get("expanded"),
         )
         for item in raw.get("elements", [])
         if item.get("id")
@@ -294,7 +308,10 @@ def snapshot_from_raw(raw: dict[str, Any], *, tabs: tuple[Tab, ...] = ()) -> Sna
     compact = {
         "url": raw.get("url", ""),
         "title": raw.get("title", ""),
-        "elements": [element.compact() for element in elements],
+        "elements": [vars(element) for element in elements],
+        "document_id": raw.get("document_id", ""),
+        "scroll_y": raw.get("scroll_y", 0),
+        "tabs": [vars(tab) for tab in tabs],
     }
     return Snapshot(
         url=str(raw.get("url", "")),
@@ -303,6 +320,9 @@ def snapshot_from_raw(raw: dict[str, Any], *, tabs: tuple[Tab, ...] = ()) -> Sna
         elements=elements,
         fingerprint=hashlib.sha256(json.dumps(compact, sort_keys=True).encode()).hexdigest(),
         tabs=tabs,
+        document_id=str(raw.get("document_id", "")),
+        scroll_y=float(raw.get("scroll_y", 0)),
+        can_scroll_down=bool(raw.get("can_scroll_down", False)),
     )
 
 
@@ -319,12 +339,15 @@ def decision_still_valid(
         return True
     if decided is None or decided.fingerprint != expected_fingerprint or fresh.url != decided.url:
         return False
+    if fresh.document_id != decided.document_id or fresh.tabs != decided.tabs:
+        return False
     target = action.get("target_id")
     if not target:
         return True
 
     def identity(snapshot: Snapshot) -> tuple | None:
         element = next((item for item in snapshot.elements if item.id == target), None)
-        return (element.role, element.text, element.href) if element else None
+        return (element.role, element.text, element.href, element.value, element.disabled,
+                element.readonly, element.checked, element.expanded) if element else None
 
     return identity(decided) is not None and identity(decided) == identity(fresh)

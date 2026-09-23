@@ -67,7 +67,7 @@ def _terminate(*_: object) -> None:
     raise SystemExit(0)
 
 
-def run(model: str | None = None, trace: Path | None = None) -> int:
+def run(model: str | None = None, trace: Path | None = None, *, goal_loop: bool = False) -> int:
     signal.signal(signal.SIGTERM, _terminate)
     # stdout carries only status lines for the app; anything a library prints goes to the log.
     status_stream = sys.stdout
@@ -76,7 +76,11 @@ def run(model: str | None = None, trace: Path | None = None) -> int:
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     warnings.filterwarnings("ignore", message=".*temperatures outside.*")
     log("backend starting")
-    engine = LayaEngine(model)
+    if goal_loop:
+        from .goal_controller import GoalController
+        from .goal_engine import GoalEngine
+
+    engine = GoalEngine(model) if goal_loop else LayaEngine(model)
     try:
         engine.warm()
     except Exception as exc:
@@ -85,7 +89,8 @@ def run(model: str | None = None, trace: Path | None = None) -> int:
     log(f"model ready: {engine.model_name}")
     browser = SettingsBrowser()
     status = PipeStatus(status_stream)
-    controller = StreamingController(browser, engine, trace_path=trace, status=status, announce=log)
+    controller_type = GoalController if goal_loop else StreamingController
+    controller = controller_type(browser, engine, trace_path=trace, status=status, announce=log)
     try:
         for line in sys.stdin:
             try:
@@ -94,8 +99,12 @@ def run(model: str | None = None, trace: Path | None = None) -> int:
                 continue
             event = raw.get("event")
             if event == "voice_on":
+                if goal_loop:
+                    controller.resume()
                 browser.follow_settings()
                 controller.prepare_browser()
+            elif event == "voice_off" and goal_loop:
+                controller.pause()
             elif event == "config_changed":
                 browser.follow_settings()
             elif "text" in raw:

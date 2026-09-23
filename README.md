@@ -18,6 +18,10 @@ https://github.com/user-attachments/assets/913a7be7-f81f-42c9-9b73-106c7b9871b5
 > **Early alpha:** LayaBrowse is a source-installed macOS project, not a notarized downloadable app yet.
 > Expect rough edges on websites that frequently change their interface.
 
+**Experimental branch:** `--goal-loop` runs a model-led observe → choose → act loop using a browser-trained
+Laya checkpoint. It is opt-in and is **not yet as reliable as the standard mode**. See
+[goal-loop setup, measurements and limitations](docs/GOAL_LOOP.md). Installing normally does not enable it.
+
 ```text
 double-tap Left Control → “open YouTube and search for ESP32 projects”
                          → “open the first video”

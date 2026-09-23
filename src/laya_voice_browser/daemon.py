@@ -30,10 +30,14 @@ def _terminate(*_: object) -> None:
     raise SystemExit(0)
 
 
-def run(model: str | None = None, trace: Path | None = None) -> int:
+def run(model: str | None = None, trace: Path | None = None, *, goal_loop: bool = False) -> int:
     signal.signal(signal.SIGTERM, _terminate)
     log("starting LayaBrowse")
-    engine = LayaEngine(model)
+    if goal_loop:
+        from .goal_controller import GoalController
+        from .goal_engine import GoalEngine
+
+    engine = GoalEngine(model) if goal_loop else LayaEngine(model)
     try:
         engine.warm()
     except Exception as exc:
@@ -42,12 +46,17 @@ def run(model: str | None = None, trace: Path | None = None) -> int:
     log(f"model ready: {engine.model_name}")
     status = StatusChannel(free_udp_port())
     browser = SettingsBrowser()
-    controller = StreamingController(browser, engine, trace_path=trace, status=status, announce=log)
+    controller_type = GoalController if goal_loop else StreamingController
+    controller = controller_type(browser, engine, trace_path=trace, status=status, announce=log)
 
     def on_signal(name: str) -> None:
         if name == "voice_on":
+            if goal_loop:
+                controller.resume()
             browser.follow_settings()
             controller.prepare_browser()
+        elif name == "voice_off" and goal_loop:
+            controller.pause()
         elif name == "config_changed":
             browser.follow_settings()
 

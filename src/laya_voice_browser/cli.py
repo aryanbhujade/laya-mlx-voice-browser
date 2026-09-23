@@ -24,6 +24,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--url", help="Open this page first")
     result.add_argument("--browser", help="safari, chrome, edge, … (default: the Browser setting)")
     result.add_argument("--model", help="Local path or Hugging Face Laya-MLX checkpoint")
+    result.add_argument("--goal-loop", action="store_true", help="Experimental model-led browsing goals")
     result.add_argument("--trace", type=Path, help="Append inspectable JSONL decisions and outcomes")
     result.add_argument("--keep-open", action="store_true", help="Leave the browser window open afterwards")
     modes = result.add_mutually_exclusive_group()
@@ -45,13 +46,15 @@ def service_main(command: str, rest: list[str]) -> int:
 
         options.add_argument("--model")
         options.add_argument("--trace", type=Path)
+        options.add_argument("--goal-loop", action="store_true")
         args = options.parse_args(rest)
-        return backend.run(args.model, args.trace)
+        return backend.run(args.model, args.trace, goal_loop=args.goal_loop)
     if command == "daemon":
         options.add_argument("--model")
         options.add_argument("--trace", type=Path)
+        options.add_argument("--goal-loop", action="store_true")
         args = options.parse_args(rest)
-        return daemon.run(args.model, args.trace)
+        return daemon.run(args.model, args.trace, goal_loop=args.goal_loop)
     if command == "install":
         options.add_argument("--skip-model", action="store_true", help="Do not download the model now")
         args = options.parse_args(rest)
@@ -63,13 +66,25 @@ def service_main(command: str, rest: list[str]) -> int:
     return service.uninstall() if command == "uninstall" else service.status()
 
 
+def _result_code(controller, goal_loop: bool) -> int:
+    if controller.session_lost:
+        return 3
+    if goal_loop and (not controller.goal or controller.goal.status != "model_done"):
+        return 4
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] in SERVICE_COMMANDS:
         return service_main(argv[0], argv[1:])
     args = parser().parse_args(argv)
     print("Warming Laya-MLX locally…", flush=True)
-    engine = LayaEngine(args.model)
+    if args.goal_loop:
+        from .goal_controller import GoalController
+        from .goal_engine import GoalEngine
+
+    engine = GoalEngine(args.model) if args.goal_loop else LayaEngine(args.model)
     try:
         engine.warm()
     except Exception as exc:
@@ -85,20 +100,25 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     status = StatusChannel(free_udp_port())
-    controller = StreamingController(browser, engine, trace_path=args.trace, status=status)
+    controller_type = GoalController if args.goal_loop else StreamingController
+    controller = controller_type(browser, engine, trace_path=args.trace, status=status)
     try:
         if args.command:
             controller.submit(TranscriptEvent(args.command, True, "typed", time.time()))
-            controller.wait_idle()
-            return 3 if controller.session_lost else 0
+            controller.wait_idle(timeout=60)
+            return _result_code(controller, args.goal_loop)
         if args.replay:
             for event in replay_events([args.replay], word_delay=args.word_delay):
                 controller.submit(event)
-            controller.wait_idle()
-            return 3 if controller.session_lost else 0
+            controller.wait_idle(timeout=60)
+            return _result_code(controller, args.goal_loop)
 
         print("Ready. Double-tap left Control to speak; press Control-C to stop.", flush=True)
-        for event in native_events(status_port=status.port):
+        def on_signal(name):
+            if args.goal_loop and name in {"voice_on", "voice_off"}:
+                controller.resume() if name == "voice_on" else controller.pause()
+
+        for event in native_events(status_port=status.port, on_signal=on_signal):
             controller.submit(event)
             if controller.session_lost:
                 return 3
