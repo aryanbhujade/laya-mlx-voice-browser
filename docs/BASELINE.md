@@ -26,14 +26,34 @@ near-chance heads are the documented behaviour rather than a sign of misuse.
 Two further upstream limitations apply directly here:
 
 - **High-cardinality choice.** A 77-option question "allocates only ~3–4 tokens per label, causing
-  accuracy to fall off sharply (0.425 vs Jev's 0.870)". Our `intent` question has 15 options and
-  lands in the `choice:11+` temperature bucket that laya-mlx refuses to apply. `laya_mlx.shortlist`
-  is the documented remedy: embed the state and the options, keep the top *k*, run one prediction on
-  the reduced set. It keeps the options concrete, unlike grouping them into abstract families, which
-  was measured here and was much worse (0.385 against 0.692 for the single question).
+  accuracy to fall off sharply (0.425 vs Jev's 0.870)". This does **not** apply here, and it was
+  worth measuring rather than assuming: the `intent` question uses 162 of its 192 prefix tokens, all
+  15 options are rendered untruncated, and the longest is 14 tokens against a 48-token cap. Nothing
+  is starved, so `laya_mlx.shortlist` is not a remedy for this project — see below.
 - **Ordinal `score` is the weakest primitive** (SST-5 0.372), which is what `scroll_amount` uses.
 
 laya-mlx adds: "confidence does not guarantee accuracy."
+
+## Three fixes that were tried on the intent head and did not work
+
+Recorded so they are not attempted again from scratch. Baseline is the single 15-option question at
+18/26 = 0.692, with mean confidence 0.977 when right and 0.879 when wrong.
+
+| Attempt | Result |
+|---|---|
+| Group the 15 options into 5 abstract families, then ask within the family | 0.385 — the family head sends "press enter", "open a new tab" and "switch to the next tab" all to `navigate` |
+| `laya_mlx.shortlist` with `embed_fn_from_agent`, k = 10/8/6 | 0.577 / 0.538 / 0.462 ranking on the state; 0.654 / 0.654 / 0.385 ranking on the transcript alone |
+| Prune options to the ten the page can actually support, reaching the calibrated 6-10 bucket | 0.692, unchanged, and confidence separation falls from +0.098 to +0.026 |
+
+The shortlist result has a clear cause: retrieval drops the correct label before the model sees it.
+At k = 6 the right answer survives in only 10 of 26 rows, which caps accuracy below the baseline
+whatever the model then does. Mean-pooled encoder embeddings rank `search_web` above `go_back` for
+"go back" and above `press_enter` for "press enter". Shortlisting is for option sets too large to
+render; ours is not one.
+
+The pruning result rules out the remaining prompt-shaped explanation: reaching the calibrated bucket
+changes neither the accuracy nor, usefully, the confidence. What is left is the checkpoint itself,
+which is what the upstream zero-shot warning above already said.
 
 ## `complete` measured on real speech
 
