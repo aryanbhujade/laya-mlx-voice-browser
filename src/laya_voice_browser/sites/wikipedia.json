@@ -1,6 +1,12 @@
 {
   "name": "Wikipedia",
   "hosts": ["wikipedia.org"],
+  "browsing": {
+    "site": "wikipedia", "home": "https://en.wikipedia.org/wiki/Main_Page",
+    "search_url": "https://en.wikipedia.org/w/index.php?search={query}", "query_key": "search",
+    "results_selector": ".mw-search-results", "result_selector": ".mw-search-result-heading a",
+    "heading_selector": "#firstHeading", "detail_selector": "#mw-content-text .mw-parser-output"
+  },
   "actions": [
     {"id": "random", "description": "open a random article",
      "say": ["(open |show me |go to )?(a )?random (article|page)", "surprise me"],

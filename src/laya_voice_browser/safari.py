@@ -94,7 +94,9 @@ class SafariBrowser:
 
     def snapshot(self) -> Snapshot:
         try:
-            raw = self.driver.execute_script(SNAPSHOT_JS, MAX_OBSERVED_ELEMENTS)
+            from .sites import browsing_probes
+
+            raw = self.driver.execute_script(SNAPSHOT_JS, MAX_OBSERVED_ELEMENTS, browsing_probes())
         except Exception as exc:
             if _session_lost(exc):
                 raise BrowserSessionLost("The Safari automation window is gone") from exc

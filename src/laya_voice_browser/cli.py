@@ -69,7 +69,7 @@ def service_main(command: str, rest: list[str]) -> int:
 def _result_code(controller, goal_loop: bool) -> int:
     if controller.session_lost:
         return 3
-    if goal_loop and (not controller.goal or controller.goal.status != "model_done"):
+    if goal_loop and (not controller.goal or controller.goal.status not in {"verified_done", "direct_done"}):
         return 4
     return 0
 

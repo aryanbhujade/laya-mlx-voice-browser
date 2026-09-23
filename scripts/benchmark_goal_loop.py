@@ -15,6 +15,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from laya_voice_browser import browsers
+from laya_voice_browser.goal_contracts import definitions
 from laya_voice_browser.goal_controller import GoalController
 from laya_voice_browser.goal_engine import GoalEngine, UncertainDecision
 from laya_voice_browser.goals import Goal, scope
@@ -28,6 +29,26 @@ LIVE_CASES = [
     ("open github and search for ESP32", "github", "ESP32"),
     ("open amazon and search for ESP32 board", "amazon", "ESP32 board"),
     ("open ebay and search for ESP32 board", "ebay", "ESP32 board"),
+]
+
+
+# The outcome Laya should choose before acting: (kind, query, result number). The query and result
+# number are literal speech; the kind, and whether it is a browsing request at all, is Laya's call.
+OBJECTIVE_CASES = [
+    ("open youtube", ("open_site", "", 0)),
+    ("go to github", ("open_site", "", 0)),
+    ("open wikipedia and search for Mercury", ("search", "Mercury", 0)),
+    ("search youtube for ESP32 tutorials", ("search", "ESP32 tutorials", 0)),
+    ("search github for laya mlx", ("search", "laya mlx", 0)),
+    ("search youtube for lofi beats and play the first video", ("open_result", "lofi beats", 1)),
+    ("open wikipedia, search for Alan Turing and open the first result", ("open_result", "Alan Turing", 1)),
+    ("on github search for esp32 and open the second repository", ("open_result", "esp32", 2)),
+    ("search youtube for cats and open the third video", ("open_result", "cats", 3)),
+    ("search wikipedia for first world war and open the second result",
+     ("open_result", "first world war", 2)),
+    ("search youtube for jazz and watch the top video", ("open_result", "jazz", 1)),
+    ("so anyway we should get lunch", ("unsupported", "", 0)),
+    ("that youtube video was interesting", ("unsupported", "", 0)),
 ]
 
 
@@ -80,7 +101,9 @@ def main():
                     c.submit(TranscriptEvent(text, True, str(index), time.time()))
                     c.wait_idle(timeout=60)
                     page = browser.snapshot()
-                    row = {"goal": text, "status": c.goal.status, "actions": len(c.goal.history),
+                    # Sites without a browsing probe are refused by design, not failed attempts.
+                    row = {"goal": text, "pilot_site": site in definitions(),
+                           "status": c.goal.status, "actions": len(c.goal.history),
                            "outcome_matches": outcome_matches(page, site, query), "url": page.url,
                            "elapsed_ms": round((time.perf_counter() - started) * 1000)}
                 finally:
@@ -98,6 +121,16 @@ def main():
              "CLICK", {"e03", "site:wikipedia"}),
             ("and search for ESP32", load_page("github_home"), [], "CLICK", {"github_search"}),
         ])
+        for text, want in OBJECTIVE_CASES:
+            goal = Goal("objective", text)
+            try:
+                engine.prepare(goal, BLANK)
+                got = (goal.contract.kind, goal.contract.query, goal.contract.ordinal)
+            except UncertainDecision:
+                got = ("unsupported", "", 0)
+            row = {"objective": text, "hit": got == want, "want": list(want), "got": list(got)}
+            rows.append(row)
+            print(json.dumps(row), flush=True)
         for text, page, history, expected_op, targets in cases:
             try:
                 decision = engine.choose(Goal("probe", text, history=history), page)
@@ -117,6 +150,9 @@ def main():
             print(json.dumps({k: v for k, v in row.items() if k not in {"answers", "decision"}}), flush=True)
     result = {"model": engine.model_name, "mode": "live" if args.live else "next_step_fixture",
               "rows": rows}
+    objectives = [r for r in rows if "objective" in r]
+    if objectives:
+        result["objective_accuracy"] = f"{sum(r['hit'] for r in objectives)}/{len(objectives)}"
     times = [r["model_ms"] for r in rows if "model_ms" in r]
     if times:
         result["median_model_ms"] = statistics.median(times)

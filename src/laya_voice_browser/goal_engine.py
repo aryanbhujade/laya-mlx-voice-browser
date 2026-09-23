@@ -6,6 +6,7 @@ No generative model, legacy intent rules, lexical winner or silent fallback.
 from __future__ import annotations
 
 import math
+import re
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -96,6 +97,56 @@ class GoalEngine(LayaEngine):
         # The goal engine never calls the legacy intent policy, even during warmup.
         pass
 
+    def prepare(self, goal: Goal, page: Snapshot) -> GoalDecision:
+        """Laya selects the whole requested outcome before choosing any browser action."""
+        from .goal_contracts import contract_options
+
+        self.warm()
+        contracts = contract_options(goal, page)
+        if not contracts:
+            raise UncertainDecision("Try one Wikipedia, YouTube or GitHub browsing goal at a time")
+        result = GoalDecision("INTERPRET")
+        descriptions = {
+            "open_site": "Open the requested website. No search or result opening.",
+            "search": "Search for the requested topic and show the results.",
+            "open_result": "Open a particular video, article or repository from search results.",
+        }
+        options = {c.kind: descriptions[c.kind] for c in contracts.values()}
+        options["unsupported"] = "Not a command, ambiguous, or these outcomes omit part of the request"
+        picked = self._ask("objective", goal, page, options,
+                           "Choose the outcome requested by the speaker, not the next action. "
+                           "Include ALL requested work, including opening a result. "
+                           "Unrelated speech, unsupported actions or missing details mean unsupported.",
+                           result)
+        if picked == "unsupported":
+            raise UncertainDecision("The request needs clarification or is outside this browsing pilot")
+        remaining = [c for c in contracts.values() if c.kind == picked]
+        if picked != "open_site":
+            queries = list(dict.fromkeys(c.query for c in remaining))
+            query_options = {str(i): q for i, q in enumerate(queries)}
+            query_options["none"] = "No supplied text is the requested query"
+            query = self._ask("objective_query", goal, page, query_options,
+                              "Which exact text is the search query? Exclude navigation instructions.",
+                              result)
+            if query == "none":
+                raise UncertainDecision("No literal query selected")
+            remaining = [c for c in remaining if c.query == queries[int(query)]]
+        if picked == "open_result":
+            ordinal_options = {str(c.ordinal): f"Result number {c.ordinal}" for c in remaining}
+            ordinal_options["none"] = "No specific result number was requested"
+            ordinal = self._ask("objective_result", goal, page, ordinal_options,
+                                "Which result number did the speaker request? Do not invent a preference.",
+                                result)
+            if ordinal == "none":
+                raise UncertainDecision("Specify which result to open, for example the first video")
+            remaining = [c for c in remaining if c.ordinal == int(ordinal)]
+        goal.contract = remaining[0]
+        goal.contract.new_tab = bool(re.search(r"\bnew\s+tab\b", goal.text, re.I))
+        goal.contract.initial_tabs = tuple(t.id for t in page.tabs)
+        if goal.contract.new_tab and not page.tabs:
+            raise UncertainDecision("Cannot verify a new tab without observing the browser's tabs")
+        return result
+
     def _prefix_fits(self, question: dict) -> bool:
         from laya_mlx.common import render_options
 
@@ -121,6 +172,12 @@ class GoalEngine(LayaEngine):
                 for h in goal.history[-4:]
             ],
         }
+        if goal.contract:
+            state["required_outcome"] = {
+                "task": goal.contract.label(), "new_tab": goal.contract.new_tab,
+                "search_observed": goal.contract.search_observed,
+                "expected_result": goal.contract.expected_url,
+            }
         budget = self._agent.cfg["max_len"] - self._prefix_length(question) - 1
         # Preserve goal and executed history; text is expendable. Refuse if core state cannot fit.
         fitted, trimmed = state, []
@@ -201,7 +258,9 @@ class GoalEngine(LayaEngine):
         if result.operation in groups:
             result.candidate = self._target(goal, page, groups[result.operation], result)
             value = None
-            if result.candidate.action["type"] in {"type", "search"}:
+            if result.candidate.action["type"] in {"type", "search"} and goal.contract:
+                value = goal.contract.query
+            elif result.candidate.action["type"] in {"type", "search"}:
                 spans = literal_spans(goal.text)
                 span_options = {str(i): s for i, s in enumerate(spans)}
                 span_options["none"] = "The required text was not provided"

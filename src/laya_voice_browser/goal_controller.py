@@ -4,10 +4,12 @@ from __future__ import annotations
 import json
 import re
 import time
+from dataclasses import asdict
 
 from .browser import BrowserSessionLost, StalePage, Unavailable
 from .controller import StreamingController
 from .goal_engine import UncertainDecision
+from .goal_fast_path import direct_action
 from .goals import (
     GOAL_TTL,
     MAX_DECISIONS,
@@ -39,6 +41,7 @@ class GoalController(StreamingController):
         self._enabled = True
         self._closed = False
         self._cancelled_ids: list[str] = []
+        self._direct_ids: list[str] = []
 
     def cancel(self, reason: str = "cancelled") -> None:
         with self._lock:
@@ -59,7 +62,7 @@ class GoalController(StreamingController):
     def submit(self, event: TranscriptEvent) -> None:
         text = repair_speech(event.text).strip()
         if (not text or self.session_lost or not self._enabled or self._closed
-                or event.utterance_id in self._cancelled_ids):
+                or event.utterance_id in self._cancelled_ids or event.utterance_id in self._direct_ids):
             return
         if text.casefold().strip(" .!?") in {"stop", "cancel", "never mind", "nevermind"}:
             self.cancel()
@@ -72,8 +75,14 @@ class GoalController(StreamingController):
             self._generation += 1
             generation = self._generation
             old = self.goal
+            direct = direct_action(text) if event.final else None
+            if direct and old:
+                old.status = "interrupted"
+                if old.id != event.utterance_id:
+                    self._cancelled_ids = (self._cancelled_ids + [old.id])[-32:]
             alive = (old and time.monotonic() - old.created_at < GOAL_TTL
-                     and old.status not in {"cancelled", "voice_off", "expired", "closed"})
+                     and old.status not in {"cancelled", "voice_off", "expired", "closed",
+                                            "interrupted", "direct_done"})
             same = alive and old.id == event.utterance_id
             continuation = alive and re.match(r"^(?:and|then)\b", text, re.I)
             history = old.history if (same or continuation) else []
@@ -84,7 +93,9 @@ class GoalController(StreamingController):
                              decisions=old.decisions if (same or continuation) else 0, prefix=prefix)
             goal = self.goal
         self.announce(f'goal{" (final)" if event.final else " (listening)"}: {whole}')
-        if len(whole) > MAX_GOAL_CHARS:
+        if direct:
+            self._submit_job(self._run_direct, generation, goal, direct)
+        elif len(whole) > MAX_GOAL_CHARS:
             goal.status = "too_long"
             self._status("unsure", label="Try a shorter request", ttl=3.0)
         elif event.final and missing_payload(text):
@@ -97,6 +108,42 @@ class GoalController(StreamingController):
     def _current(self, generation: int, goal: Goal) -> bool:
         with self._lock:
             return generation == self._generation and time.monotonic() - goal.created_at < GOAL_TTL
+
+    def _run_direct(self, generation: int, goal: Goal, action: dict) -> None:
+        """Same serial browser queue, no model pass and no navigation-settling delay."""
+        if not self._current(generation, goal):
+            return
+        started = time.perf_counter()
+        try:
+            page = self.browser.snapshot()
+            if not self._current(generation, goal):
+                return
+            self._direct_ids = (self._direct_ids + [goal.id])[-32:]
+            self.browser.execute(action, expected_fingerprint=page.fingerprint)
+            goal.history.append({"executed": action, "source": "universal"})
+            goal.status = "direct_done"
+            self._trace({"goal_id": goal.id, "execution": action, "source": "universal", "model_ms": 0,
+                         "dispatch_ms": round((time.perf_counter() - started) * 1000, 2)})
+        except BrowserSessionLost:
+            goal.status = "browser_lost"
+            raise
+        except Exception as exc:
+            goal.status = "clarify"
+            self.announce(f"Direct command failed: {exc}")
+        if self._current(generation, goal):
+            self._status("done" if goal.status == "direct_done" else "unsure", ttl=1.0)
+
+    def _verified(self, goal: Goal, page) -> bool:
+        from .goal_contracts import verify
+
+        if goal.contract is None:
+            return False
+        result = verify(goal.contract, page)
+        self._trace({"goal_id": goal.id, "contract": asdict(goal.contract),
+                     "verification": asdict(result), "observation": asdict(page)})
+        if result.satisfied:
+            goal.status = "verified_done"
+        return result.satisfied
 
     def _observe_settled(self, generation: int, goal: Goal):
         """Bounded hydration wait; consecutive fresh observations, not a model WAIT guess.
@@ -120,11 +167,9 @@ class GoalController(StreamingController):
     def _run_goal(self, generation: int, goal: Goal) -> None:
         seen: set[str] = set()
         waits = 0
+        prepared = False
         try:
             while self._current(generation, goal):
-                if len(goal.history) >= self.max_steps or goal.decisions >= MAX_DECISIONS:
-                    goal.status = "budget_exhausted"
-                    break
                 self._status("thinking")
                 page = self.browser.snapshot()
                 blocker = browser_blocker(page)
@@ -140,6 +185,18 @@ class GoalController(StreamingController):
                         break
                     self._observe_settled(generation, goal)
                     continue
+                if not prepared:
+                    interpretation = self.engine.prepare(goal, page)
+                    if not self._current(generation, goal):
+                        return
+                    prepared = True
+                    self._trace({"goal_id": goal.id, "interpretation": asdict(interpretation),
+                                 "contract": asdict(goal.contract) if goal.contract else None})
+                if self._verified(goal, page):
+                    break
+                if len(goal.history) >= self.max_steps or goal.decisions >= MAX_DECISIONS:
+                    goal.status = "budget_exhausted"
+                    break
                 decision = self.engine.choose(goal, page)
                 goal.decisions += 1
                 record = {"goal_id": goal.id, "goal": goal.text, "step": len(goal.history),
@@ -157,8 +214,9 @@ class GoalController(StreamingController):
                     fresh = self.browser.snapshot()
                     if page_identity(page) != page_identity(fresh):
                         continue
-                    # DONE is model judgement, not a separately verified success rate.
-                    goal.status = "model_done" if decision.operation == "DONE" else "blocked"
+                    # Never display a successful completion solely because Laya said DONE.
+                    if not self._verified(goal, fresh):
+                        goal.status = "unverified_done" if decision.operation == "DONE" else "blocked"
                     break
                 if decision.operation == "WAIT":
                     waits += 1
@@ -198,6 +256,8 @@ class GoalController(StreamingController):
                 self._trace({"goal_id": goal.id, "observation": item})
                 if not self._current(generation, goal):
                     return
+                if self._verified(goal, after):
+                    break
                 if len(goal.history) >= 2 and all(h["page_changed"] is False for h in goal.history[-2:]):
                     goal.status = "stalled"
                     break
@@ -218,7 +278,7 @@ class GoalController(StreamingController):
             self._trace({"goal_id": goal.id, "error": f"{type(exc).__name__}: {exc}"})
         if generation == self._generation:
             self.announce(f"goal stopped: {goal.status}; {len(goal.history)} actions")
-            self._status("done" if goal.status == "model_done" else "unsure", ttl=2.0)
+            self._status("done" if goal.status == "verified_done" else "unsure", ttl=2.0)
             self._trace({"goal_id": goal.id, "goal_status": goal.status, "actions": len(goal.history)})
 
     def close(self) -> None:

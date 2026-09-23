@@ -37,11 +37,38 @@ The installed app does not enable goal mode by default. The complete microphone 
   corrections and pronouns are not yet supported reliably.
 - Decisions are bounded by time, action count, repeated actions, stale-page checks and confidence gates.
   Challenges and empty pages cannot justify success. Credentials and account-changing actions are excluded.
-- `DONE` currently means the model says done, not independent verification. A few live searches worked,
-  but premature stopping, extra actions and abstentions remain. This is a rollback checkpoint, not a
-  production-ready replacement. Non-DONE command runs exit with code 4; lost sessions use code 3.
+- Success is reported only when the requested outcome is verified in the observed page (below). Laya
+  saying `DONE` alone ends as `unverified_done`. Command runs exit 0 for a verified or direct result,
+  4 otherwise, and 3 for a lost session.
 - Site names, URL templates, literal text candidates and safety filters define available tools; Laya
   selects among them. Upstream accuracy and latency are not LayaBrowse benchmark claims.
+
+## Verified completion
+
+Before acting, Laya chooses the requested **outcome** from a finite set of contracts: open a site, search
+it, or open result *n* from its search. Rules propose the contracts from literal speech — the site named,
+the query span, a spoken result number — and Laya picks one, or `unsupported`. The contract is then
+checked against every observation, so the loop stops on evidence rather than on the model's `DONE`:
+
+- **open_site** — the site's page rendered.
+- **search** — the site's search URL carries exactly the query, *and* its result list rendered.
+- **open_result** — the search was observed first, and the page is the *n*th result it listed.
+
+Evidence comes from the site pack's `browsing` probe (see [Writing site packs](SITE_PACKS.md)). This is a
+pilot on Wikipedia, YouTube and GitHub; other sites are refused rather than attempted unverified. A
+browser challenge never counts as success.
+
+Measured on 13 spoken goals with the browser checkpoint: 12 got kind, query and result number all
+right. "go to github" abstained (Laya split 0.53/0.47 between unsupported and open_site), which fails
+safe as a clarification. The result number is extracted from speech rather than chosen by Laya: offered
+1–3, Laya scored near-uniform for anything but "first".
+
+## Direct controls
+
+Whole-utterance `back`, `forward` and `scroll up/down` (with courtesy words and "a little"/"a page") run
+with no model pass and no settling wait, and interrupt a goal in progress. Final speech only. Tab
+changes, continuations ("and scroll down") and anything qualified ("scroll down to the comments") go
+to Laya instead.
 
 ## Check
 

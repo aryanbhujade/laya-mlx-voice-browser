@@ -97,6 +97,36 @@ Open templates support:
   results the control is absent and "scroll down" is an ordinary scroll. Entries are plain prefixes
   anchored with `^`, so a pack can be read without evaluating a regular expression.
 
+## Goal-loop probe (`browsing`)
+
+Experimental goal mode reads an optional `browsing` block to verify that a requested outcome actually
+happened. It adds no phrases and selects nothing; it only tells the observer where the evidence is.
+
+```json
+"browsing": {
+  "site": "wikipedia",
+  "home": "https://en.wikipedia.org/wiki/Main_Page",
+  "search_url": "https://en.wikipedia.org/w/index.php?search={query}",
+  "query_key": "search",
+  "results_selector": ".mw-search-results",
+  "result_selector": ".mw-search-result-heading a",
+  "heading_selector": "#firstHeading",
+  "detail_selector": "#mw-content-text .mw-parser-output"
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `search_url` | Search template; `{query}` is the URL-encoded query |
+| `query_key` | The URL parameter that holds the query, checked for an exact match |
+| `results_selector` | Present and visible when the result list has rendered |
+| `result_selector` | Result links, in page order, used to identify result *n* |
+| `heading_selector` / `detail_selector` | Present on an opened result page |
+
+A site with no probe cannot have a goal verified, so goal mode refuses it. Add a probe only with
+selectors you have seen match on the live site, and keep them to stable attributes: a probe that
+silently stops matching turns every success into a refusal.
+
 ## Durable selectors
 
 Prefer, in order:

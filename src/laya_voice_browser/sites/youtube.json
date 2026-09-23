@@ -3,6 +3,14 @@
   "hosts": [
     "youtube.com"
   ],
+  "browsing": {
+    "site": "youtube", "home": "https://www.youtube.com/",
+    "search_url": "https://www.youtube.com/results?search_query={query}", "query_key": "search_query",
+    "results_selector": "ytd-search",
+    "result_selector": "ytd-video-renderer a#video-title, yt-lockup-view-model a[href*='/watch?']",
+    "heading_selector": "ytd-watch-metadata h1, #info-contents h1",
+    "detail_selector": "#movie_player video"
+  },
   "actions": [
     {
       "id": "like",

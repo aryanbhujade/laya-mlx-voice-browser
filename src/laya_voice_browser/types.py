@@ -47,6 +47,7 @@ class Snapshot:
     document_id: str = ""
     scroll_y: float = 0.0
     can_scroll_down: bool = False
+    browsing: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

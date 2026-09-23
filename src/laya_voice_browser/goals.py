@@ -8,13 +8,16 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus, urlparse
 
 from .questions import SITE_HOME, SITE_SEARCH
 from .safety import deterministic_destructive, side_effect_link
 from .spans import as_https, site_for_url, url_candidates
 from .types import Element, Snapshot
+
+if TYPE_CHECKING:
+    from .goal_contracts import GoalContract
 
 HOMES = {**SITE_HOME, "ebay": "https://www.ebay.com/"}
 SEARCHES = {**SITE_SEARCH, "ebay": "https://www.ebay.com/sch/i.html?_nkw={query}"}
@@ -53,6 +56,7 @@ class Goal:
     status: str = "listening"
     decisions: int = 0
     prefix: str = ""
+    contract: GoalContract | None = None
 
 
 @dataclass(frozen=True)
@@ -84,7 +88,8 @@ def literal_spans(text: str) -> list[str]:
     for match in re.finditer(pattern, text, re.I):
         tail = text[match.end():]
         tail = re.split(
-            r"\s+(?:and(?:\s+then)?|then)\s+(?=(?:open|click|go|close|scroll|search|press)\b)",
+            r"\s+(?:and(?:\s+then)?|then)\s+"
+            r"(?=(?:open|click|go|close|scroll|search|press|play|watch|show)\b)",
             tail, maxsplit=1, flags=re.I,
         )[0]
         tail = re.split(r"\s+(?:on|in|using)\s+(?:youtube|github|wikipedia|amazon|ebay|google)\b",
@@ -135,9 +140,11 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
     Browser toolbar tools are explicitly labelled, not presented as observed DOM nodes.
     Search URL tools are site capabilities, not a policy that automatically picks a scope.
     """
+    from .goal_contracts import definitions, observed_results
+
     clicks: dict[str, Candidate] = {}
     fields: dict[str, Candidate] = {}
-    spans = literal_spans(goal.text)
+    spans = [goal.contract.query] if goal.contract and goal.contract.query else literal_spans(goal.text)
     for element in page.elements:
         label = (element.text or element.placeholder or element.tag)[:50]
         detail = f"{label} ({element.role})"
@@ -154,6 +161,8 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
 
     named = [name for name in HOMES
              if re.search(rf"\b{re.escape(name.replace('_', ' '))}\b", goal.text, re.I)]
+    if goal.contract:
+        named = [goal.contract.site]
     for name in named:
         if page.url.rstrip("/") != HOMES[name].rstrip("/"):
             clicks[f"site:{name}"] = Candidate(f"Browser: open {name} website", {
@@ -162,7 +171,10 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
         clicks[f"url:{index}"] = Candidate(f"Browser: open {url}", {
             "type": "navigate", "url": as_https(url)}, source="browser")
     clicks["browser:back"] = Candidate("Browser: go back", {"type": "back"}, source="browser")
-    clicks["browser:new_tab"] = Candidate("Browser: open a new tab", {"type": "new_tab"}, source="browser")
+    if not goal.contract or (goal.contract.new_tab and not any(
+            t.active and t.id not in goal.contract.initial_tabs for t in page.tabs)):
+        clicks["browser:new_tab"] = Candidate(
+            "Browser: open a new tab", {"type": "new_tab"}, source="browser")
     if len(page.tabs) > 1:
         clicks["browser:close_tab"] = Candidate("Browser: close current tab", {
             "type": "close_tab"}, source="browser")
@@ -171,10 +183,22 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
             clicks[f"tab:{tab.id}"] = Candidate(f"Browser: switch to {tab.title[:40]}", {
                 "type": "switch_tab", "tab_id": tab.id}, source="browser")
     if spans:
-        for name in dict.fromkeys([scope(page.url), *named, "google"]):
+        sites = [goal.contract.site] if goal.contract else [scope(page.url), *named, "google"]
+        for name in dict.fromkeys(sites):
             if name in SEARCHES:
+                if goal.contract and goal.contract.search_observed:
+                    continue
                 clicks[f"search:{name}"] = Candidate(f"Browser: search {name} for the requested topic", {
                     "type": "search", "site": name}, source="browser")
+                if goal.contract and name in definitions():
+                    clicks[f"search:{name}"] = Candidate(
+                        f"{name}: search for {goal.contract.query!r}",
+                        {"type": "search", "site": name, "query": goal.contract.query}, source="capability")
+    if goal.contract:
+        for index, item in enumerate(observed_results(page), 1):
+            clicks[f"result:{index}"] = Candidate(
+                f"{scope(page.url)}: open result {index}: {item['title'][:55]}",
+                {"type": "navigate", "url": item["url"]}, source="capability")
     groups = {"CLICK": clicks}
     if fields and spans:
         groups["TYPE_TEXT"] = fields
@@ -184,9 +208,13 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
 def materialize(candidate: Candidate, value: str | None = None) -> dict:
     action = dict(candidate.action)
     if action["type"] == "search":
+        from .goal_contracts import definitions
+
+        value = action.get("query") or value
         if not value:
             raise ValueError("Search needs a literal transcript span")
-        return {"type": "navigate", "url": SEARCHES[action["site"]].format(query=quote_plus(value))}
+        template = definitions().get(action["site"], {}).get("search_url", SEARCHES[action["site"]])
+        return {"type": "navigate", "url": template.format(query=quote_plus(value))}
     if action["type"] == "type":
         if not value:
             raise ValueError("Typing needs a literal transcript span")
@@ -196,7 +224,7 @@ def materialize(candidate: Candidate, value: str | None = None) -> dict:
 
 def page_identity(page: Snapshot) -> tuple:
     """Progress includes field values, tab identity and scrolling, not just URL changes."""
-    return (page.url, page.document_id, page.scroll_y,
+    return (page.url, page.document_id, page.scroll_y, repr(page.browsing),
             tuple((t.id, t.active) for t in page.tabs),
             tuple((e.id, e.role, e.text, e.href, e.value, e.disabled, e.readonly,
                    e.checked, e.expanded) for e in page.elements))

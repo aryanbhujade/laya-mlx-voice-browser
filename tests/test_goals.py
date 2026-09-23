@@ -250,6 +250,9 @@ class Engine:
         self.seen.append((goal.text, page.url, len(goal.history)))
         return self.replies[min(len(self.seen) - 1, len(self.replies) - 1)]
 
+    def prepare(self, goal, page):
+        return GoalDecision("INTERPRET")
+
 
 def event(text="open wikipedia and search for Mercury", final=True, id="g"):
     return TranscriptEvent(text, final, id, time.time())
@@ -264,7 +267,7 @@ def test_loop_preserves_entire_goal_reobserves_and_asks_model_again():
         assert len(browser.executed) == 2
         assert engine.seen == [(event().text, BLANK.url, 0), (event().text, WIKI.url, 1),
                                (event().text, RESULT.url, 2)]
-        assert controller.goal.status == "model_done"
+        assert controller.goal.status == "unverified_done"
         controller.submit(event())
         controller.wait_idle()
         assert len(browser.executed) == 2

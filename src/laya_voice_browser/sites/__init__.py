@@ -72,12 +72,14 @@ class SitePack:
     name: str
     hosts: tuple[str, ...]
     actions: tuple[SiteAction, ...] = field(default_factory=tuple)
+    # Opt-in goal-loop capabilities. No phrase matching; these describe tools and DOM evidence.
+    browsing: dict[str, Any] = field(default_factory=dict)
 
     def serves(self, host: str) -> bool:
         return any(host == known or host.endswith("." + known) for known in self.hosts)
 
     def available(self, url: str) -> tuple[SiteAction, ...]:
-        """The controls this page actually has."""
+        """URL-eligible legacy controls, not proof that a DOM control exists."""
         return tuple(action for action in self.actions if action.on_page(url))
 
 
@@ -104,8 +106,13 @@ def packs() -> tuple[SitePack, ...]:
             )
             for item in raw["actions"]
         )
-        loaded.append(SitePack(raw["name"], tuple(raw["hosts"]), actions))
+        loaded.append(SitePack(raw["name"], tuple(raw["hosts"]), actions, raw.get("browsing", {})))
     return tuple(loaded)
+
+
+def browsing_probes() -> list[dict]:
+    """Trusted pack metadata passed to the shared, read-only page observer."""
+    return [{**pack.browsing, "hosts": list(pack.hosts)} for pack in packs() if pack.browsing]
 
 
 def pack_for(url: str) -> SitePack | None:

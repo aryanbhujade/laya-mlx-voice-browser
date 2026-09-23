@@ -1,6 +1,14 @@
 {
   "name": "GitHub",
   "hosts": ["github.com"],
+  "browsing": {
+    "site": "github", "home": "https://github.com/",
+    "search_url": "https://github.com/search?q={query}&type=repositories", "query_key": "q",
+    "results_selector": "[data-testid='results-list']",
+    "result_selector": "[data-testid='results-list'] a[href]",
+    "heading_selector": "[itemprop='name'] a, strong[itemprop='name']",
+    "detail_selector": ".repository-content, [data-testid='repository-container']"
+  },
   "actions": [
     {"id": "issues", "description": "open this repository's issues",
      "say": ["(go to|open|show) (the )?issues"],

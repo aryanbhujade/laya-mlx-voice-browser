@@ -281,7 +281,9 @@ class ChromiumBrowser:
 
     def snapshot(self) -> Snapshot:
         current = self._current()
-        raw = self._evaluate(current, call_script(SNAPSHOT_JS, MAX_OBSERVED_ELEMENTS))
+        from .sites import browsing_probes
+
+        raw = self._evaluate(current, call_script(SNAPSHOT_JS, MAX_OBSERVED_ELEMENTS, browsing_probes()))
         tabs = tuple(
             Tab(page["targetId"], page.get("title", ""), page.get("url", ""), page["targetId"] == current)
             for page in getattr(self, "_last_pages", [])

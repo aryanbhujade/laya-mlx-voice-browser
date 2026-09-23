@@ -47,13 +47,30 @@ const elements = [...document.querySelectorAll(selectors)]
     top: Math.round(el.getBoundingClientRect().top)
   };
 }).slice(0, arguments[0]);
+// Read-only capability evidence, from trusted local pack selectors. DOM content is data, not policy.
+const pack = (arguments[1] || []).find((p) => p.hosts.some((h) => location.hostname === h || location.hostname.endsWith('.' + h)));
+let browsing = {};
+if (pack) {
+  const rendered = (el) => el && el.getClientRects().length && getComputedStyle(el).visibility !== 'hidden';
+  const resultLinks = [...document.querySelectorAll(pack.result_selector)].filter(rendered);
+  const results = [], seen = new Set();
+  for (const el of resultLinks) {
+    const href = el.href, title = label(el) || label(el.closest('ytd-video-renderer, yt-lockup-view-model') || el);
+    if (href && title && !seen.has(href)) { results.push({url: href, title}); seen.add(href); }
+    if (results.length >= 30) break;
+  }
+  const heading = [...document.querySelectorAll(pack.heading_selector)].find(rendered);
+  browsing = {site: pack.site, heading: heading ? heading.textContent.trim().slice(0, 200) : '', results,
+    results_ready: [...document.querySelectorAll(pack.results_selector)].some(rendered),
+    detail_ready: [...document.querySelectorAll(pack.detail_selector)].some(rendered)};
+}
 return {
   url: location.href,
   title: document.title,
   document_id: String(performance.timeOrigin), scroll_y: scrollY,
   can_scroll_down: scrollY + innerHeight < document.documentElement.scrollHeight - 4,
   text: (document.body?.innerText || '').replace(/\s+/g, ' ').trim().slice(0, 5000),
-  elements
+  elements, browsing
 };
 """
 
@@ -312,6 +329,7 @@ def snapshot_from_raw(raw: dict[str, Any], *, tabs: tuple[Tab, ...] = ()) -> Sna
         "document_id": raw.get("document_id", ""),
         "scroll_y": raw.get("scroll_y", 0),
         "tabs": [vars(tab) for tab in tabs],
+        "browsing": raw.get("browsing", {}),
     }
     return Snapshot(
         url=str(raw.get("url", "")),
@@ -323,6 +341,7 @@ def snapshot_from_raw(raw: dict[str, Any], *, tabs: tuple[Tab, ...] = ()) -> Sna
         document_id=str(raw.get("document_id", "")),
         scroll_y=float(raw.get("scroll_y", 0)),
         can_scroll_down=bool(raw.get("can_scroll_down", False)),
+        browsing=dict(raw.get("browsing") or {}),
     )
 
 
