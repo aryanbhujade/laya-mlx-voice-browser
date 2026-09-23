@@ -22,8 +22,12 @@ not catch it. Requiring request shape does, and it costs nothing at runtime.
 The cost of that conservatism is that question-shaped requests such as "has the build passed" are ignored, even
 though Laya picks the right control: this model scores those lower on "is this a command?" than actual
 small talk, so the two cannot be separated reliably (a targeted "do they mean this now?" question was measured
-and overlapped just as badly). Imperative phrasing — "show me the CI runs" — works. Adding the phrase to the
-pack's `terms` is the fix that always works, because rule and lexical matches skip this gate.
+and overlapped just as badly).
+
+Rephrasing as an imperative is not enough on its own: "show the CI runs" is ignored just like the question,
+because neither shares a word with the control. What works is naming the control the way the site does —
+"open Actions", "show me Actions". Adding the phrase to the pack's `terms` is the fix that always works,
+because rule and lexical matches skip this gate entirely.
 
 ## Minimal example
 
