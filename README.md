@@ -261,8 +261,24 @@ Measured on an Apple M4 Pro (24 GB):
 | Streaming decision | 18 ms median |
 | Page-target decision | 50 ms median |
 | Free-form request | 76 ms median |
-| Target accuracy on 27 commands / 5 saved real pages | 96% |
-| Site-control routing on the included 30-row suite | 100%, 0 executed false actions |
+| Click-target accuracy on 27 commands / 5 saved real pages | 96% |
+| Site-control routing on the included 43-row suite | 100%, 0 executed false actions |
+
+Those two accuracies are the whole pipeline's, not the model's. Grammar, site-pack rules and lexical
+ranking settle most decisions before Laya is asked anything, so `scripts/measure_model_contribution.py`
+reports each benchmark twice — rules alone, then with the model:
+
+| Benchmark | Rules only | With Laya |
+|---|---:|---:|
+| Intent (26 spoken commands) | 92.3% | 84.6% |
+| Site controls (43 rows) | 95.3% | 100% |
+| Click targets (27 commands) | 96.3% | 96.3% |
+
+Laya currently earns its place on loose site phrasings ("move this out of my inbox without erasing it"
+→ archive) and on rejecting speech that is not a command. It does not pick click targets — lexical
+ranking does, and the raw target head scores near chance on nine options. Treat these as small
+development measurements on manually authored sets, not a benchmark; `docs/BASELINE.md` records the
+raw per-head accuracies that led to this split of work.
 | Startup after model download | About 1 second |
 | Idle memory | About 0.9 GB, including 843 MB model weights |
 
