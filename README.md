@@ -9,6 +9,12 @@ operates Safari or a Chromium browser using a small local decision model.
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)
 [![MIT license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+## Setup and architecture video
+
+A 2-minute walkthrough of installation, permissions, and how speech becomes browser actions.
+
+https://github.com/user-attachments/assets/913a7be7-f81f-42c9-9b73-106c7b9871b5
+
 > **Early alpha:** LayaBrowse is a source-installed macOS project, not a notarized downloadable app yet.
 > Expect rough edges on websites that frequently change their interface.
 
