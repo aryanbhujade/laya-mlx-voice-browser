@@ -25,6 +25,30 @@ final class NoiseGate {
     }
 }
 
+/// Whether the microphone tap is delivering buffers at all. AVAudioEngine keeps reporting itself as
+/// running after the input route changes while its graph is stale: engine.start() does not throw, the
+/// tap simply goes quiet, and every segment then waits out Apple's no-speech timeout. Buffers arrive
+/// about fifty times a second even in silence, so their absence means the graph is dead, not that the
+/// room is quiet. Written from the audio thread, read from the main thread.
+final class AudioActivity {
+    private let lock = NSLock()
+    private var last = Date.distantPast
+
+    func note() {
+        lock.lock()
+        last = Date()
+        lock.unlock()
+    }
+
+    func restart() { note() }
+
+    var silentFor: TimeInterval {
+        lock.lock()
+        defer { lock.unlock() }
+        return Date().timeIntervalSince(last)
+    }
+}
+
 final class SpeechController {
     private let recognizer: SFSpeechRecognizer
     private let engine = AVAudioEngine()
@@ -44,11 +68,22 @@ final class SpeechController {
     private var finalEmittedForSegment = false
     private var tapInstalled = false
     private var utteranceID = UUID().uuidString
+    private let activity = AudioActivity()
+    private var audioWatchdog: Timer?
+    private var rebuilding = false
+    private var rebuilds = 0
 
     init(recognizer: SFSpeechRecognizer, island: NotchIsland, settings: LayaSettings) {
         self.recognizer = recognizer
         self.island = island
         self.settings = settings
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name.AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            self?.rebuildAudio(reason: "the input route changed")
+        }
     }
 
     func apply(_ newSettings: LayaSettings) {
@@ -153,7 +188,9 @@ final class SpeechController {
         removeTapIfNeeded()
         let island = self.island
         let gate = NoiseGate(threshold: settings.noiseGateDecibels)
+        let activity = self.activity
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            activity.note()
             let decibels = audioDecibels(buffer)
             gate.process(buffer, decibels: decibels)
             request.append(buffer)
@@ -167,6 +204,7 @@ final class SpeechController {
             if let result {
                 let text = result.bestTranscription.formattedString
                 if !text.isEmpty {
+                    self.rebuilds = 0
                     self.lastTranscript = text
                     if result.isFinal { self.finalEmittedForSegment = true }
                     Output.transcript(TranscriptEvent(text: text, final: result.isFinal,
@@ -197,6 +235,8 @@ final class SpeechController {
             engine.prepare()
             try engine.start()
             segmentActive = true
+            activity.restart()
+            startAudioWatchdog()
         } catch {
             cleanupSegment(cancelTask: true)
             voiceControlActive = false
@@ -259,7 +299,48 @@ final class SpeechController {
         }
     }
 
+    /// Catch an engine that is running but delivering nothing. A stale graph posts no error and no
+    /// notification in every case, so the only reliable signal is that buffers stopped arriving.
+    private func startAudioWatchdog() {
+        audioWatchdog?.invalidate()
+        audioWatchdog = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self, self.voiceControlActive, self.segmentActive, !self.rebuilding else { return }
+            guard self.activity.silentFor > 1.5 else {
+                self.rebuilds = 0  // audio is flowing again
+                return
+            }
+            self.rebuildAudio(reason: "the microphone stopped delivering audio")
+        }
+    }
+
+    /// Rebuild the audio graph and keep listening. Gives up after a few attempts rather than
+    /// claiming to listen with a microphone that is not coming back.
+    private func rebuildAudio(reason: String) {
+        guard voiceControlActive, !rebuilding else { return }
+        rebuilds += 1
+        guard rebuilds <= 3 else {
+            log("microphone unavailable after \(rebuilds - 1) attempts; stopping voice control")
+            island.update(IslandStatus(state: .error, label: "No microphone"), ttl: 4)
+            stopVoiceControl()
+            rebuilds = 0
+            return
+        }
+        rebuilding = true
+        log("\(reason); rebuilding the audio graph (attempt \(rebuilds))")
+        island.update(IslandStatus(state: .error, label: "Reconnecting"), ttl: 2)
+        cleanupSegment(cancelTask: true)
+        engine.reset()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self else { return }
+            self.rebuilding = false
+            guard self.voiceControlActive else { return }
+            self.startSegment()
+        }
+    }
+
     private func cleanupSegment(cancelTask: Bool) {
+        audioWatchdog?.invalidate()
+        audioWatchdog = nil
         if engine.isRunning { engine.stop() }
         removeTapIfNeeded()
         if cancelTask { task?.cancel() }
