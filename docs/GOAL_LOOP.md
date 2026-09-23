@@ -55,6 +55,13 @@ checked against every observation, so the loop stops on evidence rather than on 
 - **open_result** — the search was observed first, and the page is the *n*th result it listed.
 - **tabs / scrolling** — the requested tab identity/count or same-page scroll position changed as requested.
 
+Verification checks that the **chosen** outcome happened, not that it was the one meant, so the proposal
+step carries correctness. A tab or scroll contract is offered only when its own words are spoken, as a
+search needs a query and a result needs a result clause; a negated control ("don't close this tab") is
+vetoed. Links on the current page ("open the Talk page", "open Issues") have no contract yet, so they
+clarify. Before this, a broad live run had "please don't close this tab" close a tab and "open the Talk
+page" open a blank one, both reported as verified.
+
 After a search is verified, the numbered-result argument is bound to the observed URL. Only tools compatible
 with remaining work are offered; Laya still chooses whether to act, wait or report a blocker. An early DONE
 gets verifier feedback and bounded recovery, never a fabricated success. Known loading pages wait for DOM

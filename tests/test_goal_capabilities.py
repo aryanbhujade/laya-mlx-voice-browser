@@ -368,3 +368,33 @@ def test_new_tab_precondition_prevents_searching_in_original_tab():
     choices = action_space(goal, page)
     assert list(choices["CLICK"]) == ["browser:new_tab"]
     assert choices["CLICK"]["browser:new_tab"].action == {"type": "new_tab"}
+
+
+TABBED = Snapshot(
+    "https://en.wikipedia.org/wiki/Alan_Turing", "Alan Turing", "text", (), "fp",
+    tabs=(Tab("t1", "Alan Turing", "https://en.wikipedia.org/wiki/Alan_Turing", True),
+          Tab("t2", "GitHub", "https://github.com/", False)),
+)
+
+
+@pytest.mark.parametrize("text", ["please don't close this tab", "do not close the tab", "never scroll down"])
+def test_a_negated_control_offers_nothing_to_do(text):
+    # Live run: "please don't close this tab" closed a tab and reported verified_done.
+    assert contract_options(Goal("g", text), TABBED) == {}
+
+
+@pytest.mark.parametrize("text", ["open the Talk page", "open View history", "show pull requests"])
+def test_a_link_on_the_page_is_not_a_tab_or_scroll_outcome(text):
+    # Live run: "open the Talk page" opened a blank tab and verified it. With no in-page link contract
+    # the honest answer is to clarify, not to offer whichever controls happen to exist.
+    assert contract_options(Goal("g", text), TABBED) == {}
+
+
+@pytest.mark.parametrize("text,kinds", [
+    ("close this tab", {"close_tab", "switch_tab"}),
+    ("open a new tab", {"new_tab", "switch_tab"}),
+    ("switch to the GitHub tab", {"switch_tab"}),
+    ("and scroll down", {"scroll_up", "scroll_down"}),
+])
+def test_a_control_is_offered_when_its_own_words_are_spoken(text, kinds):
+    assert {c.kind for c in contract_options(Goal("g", text), TABBED).values()} == kinds

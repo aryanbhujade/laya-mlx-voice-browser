@@ -120,6 +120,20 @@ def awaiting_render(contract: GoalContract | None, page: Snapshot) -> bool:
     return at_search and not page.browsing.get("results_ready")
 
 
+# A control is an interpretation only when its own words were spoken, the same way a search needs a
+# query span and a result needs a result clause. Offering every control for any utterance without a
+# site or query let "open the Talk page" become a new tab and "please don't close this tab" close one,
+# and both then verified, because verification checks the chosen outcome, not whether it was meant.
+_CONTROL_WORDS = {
+    "scroll": re.compile(r"\bscroll\b|\b(?:up|down)\b", re.I),
+    "new_tab": re.compile(r"\b(?:new|another)\s+tab\b", re.I),
+    "close_tab": re.compile(r"\bclose\b", re.I),
+    "switch_tab": re.compile(r"\btabs?\b", re.I),
+}
+# A veto, like missing_payload: a negated control is not an instruction to do anything.
+_NEGATED = re.compile(r"\b(?:don'?t|do\s+not|never|no\s+need\s+to)\b", re.I)
+
+
 _ORDINALS = {"first": 1, "1st": 1, "top": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3}
 
 
@@ -152,14 +166,23 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
     ordinals = (spoken_ordinals(goal.text[result_clause.start():]) if result_clause else []) or [1, 2, 3]
     tab_reference = re.search(r"\b(?:switch|close|next|previous)\b.*\btab\b", navigation_text, re.I)
     if not spans and not result_clause and (not named or tab_reference):
-        options = {kind: GoalContract("", kind) for kind in ("scroll_up", "scroll_down")}
+        if _NEGATED.search(goal.text):
+            return {}
+        spoken = {kind for kind, words in _CONTROL_WORDS.items() if words.search(navigation_text)}
+        options = {}
+        if "scroll" in spoken:
+            options.update({kind: GoalContract("", kind) for kind in ("scroll_up", "scroll_down")})
         if page.tabs:
-            options["new_tab"] = GoalContract("", "new_tab")
-            if len(page.tabs) > 1 and any(t.active for t in page.tabs):
+            if "new_tab" in spoken:
+                options["new_tab"] = GoalContract("", "new_tab")
+            if "close_tab" in spoken and len(page.tabs) > 1 and any(t.active for t in page.tabs):
                 options["close_tab"] = GoalContract("", "close_tab")
-            for tab in page.tabs:
-                if not tab.active:
-                    options[f"tab:{tab.id}"] = GoalContract("", "switch_tab", target_tab=tab.id)
+            if "switch_tab" in spoken:
+                for tab in page.tabs:
+                    if not tab.active:
+                        options[f"tab:{tab.id}"] = GoalContract("", "switch_tab", target_tab=tab.id)
+        # Nothing spoken maps to a control: clarify rather than fall through to reopening the site,
+        # which would verify immediately and report success for having done nothing.
         return options
     if len(sites) != 1 or sites[0] not in definitions():
         return {}
