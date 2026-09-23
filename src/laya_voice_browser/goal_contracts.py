@@ -24,8 +24,14 @@ class GoalContract:
     initial_tabs: tuple[str, ...] = ()
     expected_url: str = ""
     search_observed: bool = False
+    initial_active_tab: str = ""
+    target_tab: str = ""
+    initial_url: str = ""
+    initial_scroll: float = 0
 
     def label(self) -> str:
+        if self.kind in {"close_tab", "new_tab", "switch_tab", "scroll_up", "scroll_down"}:
+            return self.kind.replace("_", " ") + (f" {self.target_tab}" if self.target_tab else "")
         if self.kind == "open_site":
             return f"Open {self.site}; no search or result opening requested"
         text = f"Search {self.site} for {self.query!r}"
@@ -98,6 +104,22 @@ def search_matches(page: Snapshot, site: str, query: str) -> bool:
                 and normal(parsed.path[6:]) == normal(query))
 
 
+def awaiting_render(contract: GoalContract | None, page: Snapshot) -> bool:
+    """A known destination is loading, not a new decision opportunity. Bounded by the controller."""
+    if not contract or contract.site != scope(page.url) or browser_blocker(page):
+        return False
+    if contract.expected_url and result_url(contract.site, page.url) == contract.expected_url:
+        return not (page.browsing.get("detail_ready") and page.browsing.get("heading"))
+    definition = definitions().get(contract.site)
+    if not definition or not contract.query:
+        return False
+    parsed = urlparse(page.url)
+    params = parse_qs(parsed.query)
+    at_search = (parsed.path == urlparse(definition["search_url"]).path
+                 and params.get(definition["query_key"]) == [contract.query])
+    return at_search and not page.browsing.get("results_ready")
+
+
 _ORDINALS = {"first": 1, "1st": 1, "top": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3}
 
 
@@ -114,19 +136,37 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
     """
     from .goals import HOMES
 
-    named = [s for s in HOMES if re.search(rf"\b{re.escape(s.replace('_', ' '))}\b", goal.text, re.I)]
-    sites = named or [scope(page.url)]
-    if len(sites) != 1 or sites[0] not in definitions():
-        return {}
-    site = sites[0]
     spans = literal_spans(goal.text)
+    # A site name inside a supplied query is topic data, not a second navigation destination.
+    navigation_text = goal.text
+    for span in sorted(spans, key=len, reverse=True):
+        navigation_text = navigation_text.replace(span, "")
+    named = [s for s in HOMES if re.search(rf"\b{re.escape(s.replace('_', ' '))}\b", navigation_text, re.I)]
+    sites = named or [scope(page.url)]
     # A restriction against dropping explicitly requested work, not an action-selection rule.
     result_clause = re.search(
-        r"\b(?:open|play|watch|click)\s+(?:on\s+)?(?:the\s+)?"
+        r"\b(?:open|play|watch|click|show)\s+(?:me\s+)?(?:on\s+)?(?:the\s+)?"
         r"(?:first|second|third|top|1st|2nd|3rd|video|result|repository)\b", goal.text, re.I)
     # "third" is a literal argument, like the query; offering 1-3 made Laya guess between them and it
     # scored near-uniform for anything but "first". Laya still decides whether a result is requested.
     ordinals = (spoken_ordinals(goal.text[result_clause.start():]) if result_clause else []) or [1, 2, 3]
+    tab_reference = re.search(r"\b(?:switch|close|next|previous)\b.*\btab\b", navigation_text, re.I)
+    if not spans and not result_clause and (not named or tab_reference):
+        options = {kind: GoalContract("", kind) for kind in ("scroll_up", "scroll_down")}
+        if page.tabs:
+            options["new_tab"] = GoalContract("", "new_tab")
+            if len(page.tabs) > 1 and any(t.active for t in page.tabs):
+                options["close_tab"] = GoalContract("", "close_tab")
+            for tab in page.tabs:
+                if not tab.active:
+                    options[f"tab:{tab.id}"] = GoalContract("", "switch_tab", target_tab=tab.id)
+        return options
+    if len(sites) != 1 or sites[0] not in definitions():
+        return {}
+    site = sites[0]
+    # Until composite control contracts exist, do not silently omit an additional browser command.
+    if spans and re.search(r"\b(?:and|then)\s+(?:close|scroll|switch|go back|go forward)\b", goal.text, re.I):
+        return {}
     options = {}
     if not spans and not result_clause:
         options[f"open:{site}"] = GoalContract(site, "open_site")
@@ -148,6 +188,24 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
 
 def verify(contract: GoalContract, page: Snapshot) -> Verification:
     """Called on every observed state, including after the last permitted action."""
+    ids = {t.id for t in page.tabs}
+    if contract.kind == "close_tab":
+        closed = (bool(contract.initial_active_tab) and contract.initial_active_tab not in ids
+                  and ids == set(contract.initial_tabs) - {contract.initial_active_tab})
+        return Verification(closed, "requested tab closed" if closed else "requested tab still open")
+    if contract.kind == "new_tab":
+        opened = any(t.active and t.id not in contract.initial_tabs for t in page.tabs)
+        return Verification(opened, "new tab active" if opened else "new tab not active")
+    if contract.kind == "switch_tab":
+        switched = any(t.active and t.id == contract.target_tab for t in page.tabs)
+        return Verification(switched, "requested tab active" if switched else "requested tab not active")
+    if contract.kind in {"scroll_up", "scroll_down"}:
+        same_tab = not contract.initial_active_tab or any(
+            t.active and t.id == contract.initial_active_tab for t in page.tabs)
+        delta = page.scroll_y - contract.initial_scroll
+        moved = page.url == contract.initial_url and same_tab and (
+            delta < 0 if contract.kind == "scroll_up" else delta > 0)
+        return Verification(moved, "scroll observed" if moved else "requested scroll not observed")
     if browser_blocker(page):
         return Verification(False, "browser challenge")
     if scope(page.url) != contract.site or page.browsing.get("site") != contract.site:

@@ -110,6 +110,11 @@ class GoalEngine(LayaEngine):
             "open_site": "Open the requested website. No search or result opening.",
             "search": "Search for the requested topic and show the results.",
             "open_result": "Open a particular video, article or repository from search results.",
+            "close_tab": "Close the current browser tab.",
+            "new_tab": "Open a new blank browser tab.",
+            "switch_tab": "Switch to another existing browser tab.",
+            "scroll_up": "Scroll up on the current page.",
+            "scroll_down": "Scroll down on the current page.",
         }
         options = {c.kind: descriptions[c.kind] for c in contracts.values()}
         options["unsupported"] = "Not a command, ambiguous, or these outcomes omit part of the request"
@@ -121,7 +126,7 @@ class GoalEngine(LayaEngine):
         if picked == "unsupported":
             raise UncertainDecision("The request needs clarification or is outside this browsing pilot")
         remaining = [c for c in contracts.values() if c.kind == picked]
-        if picked != "open_site":
+        if picked in {"search", "open_result"}:
             queries = list(dict.fromkeys(c.query for c in remaining))
             query_options = {str(i): q for i, q in enumerate(queries)}
             query_options["none"] = "No supplied text is the requested query"
@@ -140,9 +145,20 @@ class GoalEngine(LayaEngine):
             if ordinal == "none":
                 raise UncertainDecision("Specify which result to open, for example the first video")
             remaining = [c for c in remaining if c.ordinal == int(ordinal)]
+        if picked == "switch_tab":
+            tab_options = {t.id: t.title or t.url or "Untitled tab" for t in page.tabs if not t.active}
+            tab_options["none"] = "The requested tab cannot be identified"
+            tab = self._ask("objective_tab", goal, page, tab_options,
+                            "Choose the existing tab requested by the speaker.", result)
+            if tab == "none":
+                raise UncertainDecision("Which tab should I switch to?")
+            remaining = [c for c in remaining if c.target_tab == tab]
         goal.contract = remaining[0]
         goal.contract.new_tab = bool(re.search(r"\bnew\s+tab\b", goal.text, re.I))
         goal.contract.initial_tabs = tuple(t.id for t in page.tabs)
+        goal.contract.initial_active_tab = next((t.id for t in page.tabs if t.active), "")
+        goal.contract.initial_url = page.url
+        goal.contract.initial_scroll = page.scroll_y
         if goal.contract.new_tab and not page.tabs:
             raise UncertainDecision("Cannot verify a new tab without observing the browser's tabs")
         return result
@@ -178,6 +194,8 @@ class GoalEngine(LayaEngine):
                 "search_observed": goal.contract.search_observed,
                 "expected_result": goal.contract.expected_url,
             }
+        if goal.verification_feedback:
+            state["remaining_work"] = goal.verification_feedback
         budget = self._agent.cfg["max_len"] - self._prefix_length(question) - 1
         # Preserve goal and executed history; text is expendable. Refuse if core state cannot fit.
         fitted, trimmed = state, []
@@ -244,15 +262,17 @@ class GoalEngine(LayaEngine):
     def choose(self, goal: Goal, page: Snapshot) -> GoalDecision:
         self.warm()
         groups = action_space(goal, page)
-        options = {"CLICK": "Click a page element or use a browser tool."}
+        options = {"CLICK": "Click a page element or use a browser tool."} if groups.get("CLICK") else {}
         if "TYPE_TEXT" in groups:
             options["TYPE_TEXT"] = "Enter or replace text in a search field."
-        if page.can_scroll_down:
+        primitive = goal.contract.kind if goal.contract and not goal.contract.site else ""
+        if page.can_scroll_down and (not primitive or primitive == "scroll_down"):
             options["SCROLL_DOWN"] = "Scroll down"
-        if page.scroll_y > 0:
+        if page.scroll_y > 0 and (not primitive or primitive == "scroll_up"):
             options["SCROLL_UP"] = "Scroll up"
-        options.update(WAIT="Wait for loading", DONE="Every requirement is visibly satisfied.",
-                       BLOCKED="No supported operation can progress.")
+        options.update(WAIT="Wait for loading", BLOCKED="No supported operation can progress.")
+        if not goal.rejected_done:
+            options["DONE"] = "Every requirement is visibly satisfied."
         result = GoalDecision("")
         result.operation = self._ask("operation", goal, page, options, OPERATION_RULES, result)
         if result.operation in groups:

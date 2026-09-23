@@ -172,7 +172,8 @@ def test_voice_off_ignores_late_speech_until_resumed():
     (replace(BLANK, url="https://www.youtube.com/results?q=x", title=""), "page_not_ready"),
 ])
 def test_blocked_or_empty_web_pages_cannot_be_declared_done(page, status):
-    c = GoalController(Browser([page]), Engine([GoalDecision("DONE")]), announce=lambda _: None)
+    c = GoalController(Browser([page]), Engine([GoalDecision("DONE")]),
+                       ready_timeout=0.1, announce=lambda _: None)
     try:
         c.submit(event())
         c.wait_idle()

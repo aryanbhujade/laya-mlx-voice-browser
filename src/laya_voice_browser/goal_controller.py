@@ -21,6 +21,7 @@ from .goals import (
     missing_payload,
     page_identity,
 )
+from .page import decision_still_valid
 from .spans import repair_speech
 from .types import TranscriptEvent
 
@@ -33,10 +34,11 @@ class GoalController(StreamingController):
     A new utterance is a new goal, except explicit continuations within the goal TTL.
     """
 
-    def __init__(self, *args, max_steps: int = MAX_STEPS, **kwargs):
+    def __init__(self, *args, max_steps: int = MAX_STEPS, ready_timeout: float = 8.0, **kwargs):
         super().__init__(*args, **kwargs)
         self.goal: Goal | None = None
         self.max_steps = max_steps
+        self.ready_timeout = ready_timeout
         self._last_submission: tuple | None = None
         self._enabled = True
         self._closed = False
@@ -84,7 +86,8 @@ class GoalController(StreamingController):
                      and old.status not in {"cancelled", "voice_off", "expired", "closed",
                                             "interrupted", "direct_done"})
             same = alive and old.id == event.utterance_id
-            continuation = alive and re.match(r"^(?:and|then)\b", text, re.I)
+            continuation = (alive and old.status != "verified_done"
+                            and re.match(r"^(?:and|then)\b", text, re.I))
             history = old.history if (same or continuation) else []
             prefix = old.prefix if same else (f"{old.text}; " if continuation else "")
             whole = prefix + text
@@ -139,6 +142,7 @@ class GoalController(StreamingController):
         if goal.contract is None:
             return False
         result = verify(goal.contract, page)
+        goal.verification_feedback = "" if result.satisfied else result.reason
         self._trace({"goal_id": goal.id, "contract": asdict(goal.contract),
                      "verification": asdict(result), "observation": asdict(page)})
         if result.satisfied:
@@ -165,9 +169,12 @@ class GoalController(StreamingController):
         return page
 
     def _run_goal(self, generation: int, goal: Goal) -> None:
+        from .goal_contracts import awaiting_render
+
         seen: set[str] = set()
         waits = 0
         prepared = False
+        loading_since = None
         try:
             while self._current(generation, goal):
                 self._status("thinking")
@@ -177,14 +184,17 @@ class GoalController(StreamingController):
                     goal.status = blocker
                     self.announce("Browser verification is required; the goal has not been completed")
                     break
-                if page.url not in {"about:blank", ""} and not (page.title or page.text or page.elements):
-                    # No observable website content: a URL alone cannot justify DONE.
-                    waits += 1
-                    if waits >= 3:
+                empty = page.url not in {"about:blank", ""} and not (page.title or page.text or page.elements)
+                if empty or awaiting_render(goal.contract, page):
+                    # Do not let a skeleton page invite unrelated clicks or an early DONE.
+                    if loading_since is None:
+                        loading_since = time.monotonic()
+                    if time.monotonic() - loading_since >= self.ready_timeout:
                         goal.status = "page_not_ready"
                         break
                     self._observe_settled(generation, goal)
                     continue
+                loading_since = None
                 if not prepared:
                     interpretation = self.engine.prepare(goal, page)
                     if not self._current(generation, goal):
@@ -216,6 +226,13 @@ class GoalController(StreamingController):
                         continue
                     # Never display a successful completion solely because Laya said DONE.
                     if not self._verified(goal, fresh):
+                        if decision.operation == "DONE" and goal.contract and goal.rejected_done < 2:
+                            goal.rejected_done += 1
+                            self._trace({"goal_id": goal.id, "rejected_done": goal.rejected_done,
+                                         "remaining_work": goal.verification_feedback})
+                            # Observe once more for hydration, then let Laya choose from actions/WAIT/BLOCKED.
+                            self._observe_settled(generation, goal)
+                            continue
                         goal.status = "unverified_done" if decision.operation == "DONE" else "blocked"
                     break
                 if decision.operation == "WAIT":
@@ -232,10 +249,10 @@ class GoalController(StreamingController):
                 if key in seen:
                     goal.status = "repeated_action"
                     break
-                # Strict re-observation complements backend stale checks (which deliberately
-                # tolerate page animation in legacy mode). Never reinterpret a stale target.
+                # Check the selected target/document/tab, not unrelated ads and animations.
+                # The backend repeats this guard at dispatch; changed targets are never reinterpreted.
                 fresh = self.browser.snapshot()
-                if page_identity(page) != page_identity(fresh):
+                if not decision_still_valid(page, fresh, page.fingerprint, decision.action):
                     continue
                 if not self._current(generation, goal):
                     return

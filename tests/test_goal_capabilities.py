@@ -7,6 +7,7 @@ from test_goals import BLANK, WIKI, Browser, Engine, RecordingGoalEngine, decisi
 
 from laya_voice_browser.goal_contracts import (
     GoalContract,
+    awaiting_render,
     contract_options,
     observed_results,
     search_matches,
@@ -96,7 +97,7 @@ def test_laya_selects_outcome_and_can_reject_side_talk():
     engine = RecordingGoalEngine({"objective": "search", "objective_query": "0"})
     goal = Goal("g", "open wikipedia and search for Mercury")
     engine.prepare(goal, BLANK)
-    assert goal.contract == GoalContract("wikipedia", "search", "Mercury")
+    assert goal.contract == GoalContract("wikipedia", "search", "Mercury", initial_url=BLANK.url)
     assert engine.asked[0][0] == "objective"
     assert "unsupported" in engine.asked[0][1]
 
@@ -113,7 +114,7 @@ def test_capabilities_offer_model_choices_without_matching_phrases(monkeypatch):
                 contract=GoalContract("youtube", "open_result", "ESP32", ordinal=2))
     verify(goal.contract, RESULTS)
     choices = action_space(goal, RESULTS)["CLICK"]
-    assert choices["result:1"].action["url"] == VIDEO1
+    assert "result:1" not in choices  # cannot fulfil the model-selected second-result contract
     assert choices["result:2"].action["url"] == VIDEO2
     assert "search:google" not in choices
     assert "search:youtube" not in choices  # already visibly completed, not offered as a repeat
@@ -250,3 +251,120 @@ def test_an_unnumbered_result_request_still_offers_laya_the_choice():
     options = contract_options(Goal("g", text), BLANK).values()
     ordinals = {c.ordinal for c in options if c.kind == "open_result"}
     assert ordinals == {1, 2, 3}
+
+
+def test_show_me_result_cannot_degrade_to_search_only():
+    options = contract_options(Goal("g", "search youtube for cats and show me the first result"), BLANK)
+    assert options and all(c.kind == "open_result" and c.ordinal == 1 for c in options.values())
+
+
+def test_site_mentioned_as_query_is_not_a_second_destination():
+    options = contract_options(Goal("g", "search wikipedia for GitHub"), BLANK)
+    assert options and all(c.site == "wikipedia" and c.query == "GitHub" for c in options.values())
+
+
+def test_unsupported_extra_clause_is_not_silently_dropped():
+    assert not contract_options(Goal("g", "search youtube for cats and close tab"), BLANK)
+
+
+def test_close_tab_has_model_chosen_outcome_action_and_exact_tab_verification():
+    page = replace(BLANK, tabs=(Tab("a", "A", "", True), Tab("b", "B", "", False)))
+    engine = RecordingGoalEngine({"objective": "close_tab", "operation": "CLICK",
+                                  "target": "browser:close_tab"})
+    goal = Goal("g", "close tab")
+    engine.prepare(goal, page)
+    assert goal.contract.kind == "close_tab"
+    assert engine.choose(goal, page).action == {"type": "close_tab"}
+    assert not verify(goal.contract, page).satisfied
+    assert not verify(goal.contract, replace(page, tabs=(page.tabs[0],))).satisfied
+    assert verify(goal.contract, replace(page, tabs=(replace(page.tabs[1], active=True),))).satisfied
+
+
+def test_contextual_scroll_has_model_chosen_outcome():
+    page = replace(WIKI, can_scroll_down=True)
+    engine = RecordingGoalEngine({"objective": "scroll_down", "operation": "SCROLL_DOWN"})
+    goal = Goal("g", "and scroll down")
+    engine.prepare(goal, page)
+    assert engine.choose(goal, page).action["type"] == "scroll"
+    assert not verify(goal.contract, page).satisfied
+    assert verify(goal.contract, replace(page, scroll_y=300)).satisfied
+    assert not verify(goal.contract, replace(page, url=RESULTS.url, scroll_y=300)).satisfied
+
+
+def test_done_recovery_returns_to_model_and_stops_after_verified_result():
+    engine = ContractEngine(GoalContract("youtube", "search", "ESP32"),
+                            [GoalDecision("DONE"), decision(RESULTS.url)])
+    c = GoalController(Browser([BLANK, RESULTS]), engine, announce=lambda _: None)
+    try:
+        c.submit(event("search YouTube for ESP32"))
+        c.wait_idle()
+        assert c.goal.status == "verified_done"
+        assert c.goal.rejected_done == 1
+        assert len(c.browser.executed) == 1 and len(engine.seen) == 2
+    finally:
+        c.close()
+
+
+def test_repeated_unverified_done_is_bounded():
+    engine = ContractEngine(GoalContract("youtube", "search", "ESP32"), [GoalDecision("DONE")])
+    c = GoalController(Browser([BLANK]), engine, announce=lambda _: None)
+    try:
+        c.submit(event())
+        c.wait_idle()
+        assert c.goal.status == "unverified_done" and len(engine.seen) == 3
+        assert not c.browser.executed
+    finally:
+        c.close()
+
+
+def test_recovery_does_not_force_a_browser_action():
+    engine = RecordingGoalEngine({"operation": "BLOCKED"})
+    goal = Goal("g", "search youtube for ESP32", rejected_done=1,
+                verification_feedback="requested search not rendered")
+    assert engine.choose(goal, BLANK).operation == "BLOCKED"
+    options = engine.asked[0][1]
+    assert "DONE" not in options and {"WAIT", "BLOCKED", "CLICK"} <= options.keys()
+
+
+def test_followup_after_verified_goal_does_not_reexecute_completed_request():
+    engine = ContractEngine(GoalContract("youtube", "search", "ESP32"), [decision(RESULTS.url)])
+    c = GoalController(Browser([BLANK, RESULTS]), engine, announce=lambda _: None)
+    try:
+        c.submit(event("search YouTube for ESP32"))
+        c.wait_idle()
+        assert c.goal.status == "verified_done"
+        c.submit(event("and scroll down", final=False, id="followup"))
+        assert c.goal.text == "and scroll down" and not c.goal.history
+    finally:
+        c.close()
+
+
+def test_known_search_skeleton_waits_but_unsubmitted_query_is_still_actionable():
+    contract = GoalContract("youtube", "open_result", "ESP32", ordinal=1)
+    skeleton = replace(RESULTS, browsing={"site": "youtube", "results_ready": False})
+    assert awaiting_render(contract, skeleton)
+    assert not awaiting_render(contract, RESULTS)
+    assert not awaiting_render(contract, replace(skeleton, url="https://www.youtube.com/"))
+    verify(contract, RESULTS)
+    assert awaiting_render(contract, replace(WATCH, browsing={"site": "youtube"}))
+    assert not awaiting_render(contract, WATCH)
+
+
+def test_named_tab_reference_is_not_mistaken_for_opening_a_website():
+    page = replace(BLANK, tabs=(Tab("a", "YouTube", "", True), Tab("b", "GitHub", "", False)))
+    engine = RecordingGoalEngine({"objective": "switch_tab", "objective_tab": "b",
+                                  "operation": "CLICK", "target": "browser:switch_tab"})
+    goal = Goal("g", "switch to the GitHub tab")
+    engine.prepare(goal, page)
+    assert engine.choose(goal, page).action == {"type": "switch_tab", "tab_id": "b"}
+    assert verify(goal.contract, replace(page, tabs=(replace(page.tabs[0], active=False),
+                                                   replace(page.tabs[1], active=True)))).satisfied
+
+
+def test_new_tab_precondition_prevents_searching_in_original_tab():
+    goal = Goal("g", "search youtube for ESP32 in a new tab", contract=GoalContract(
+        "youtube", "search", "ESP32", new_tab=True, initial_tabs=("a",)))
+    page = replace(BLANK, tabs=(Tab("a", "old", "", True),))
+    choices = action_space(goal, page)
+    assert list(choices["CLICK"]) == ["browser:new_tab"]
+    assert choices["CLICK"]["browser:new_tab"].action == {"type": "new_tab"}

@@ -33,8 +33,8 @@ The installed app does not enable goal mode by default. The complete microphone 
 
 - Execution waits for final speech; partials invalidate pending decisions. Explicit stop/cancel and
   listening-off cancel work. A browser action already dispatched cannot be recalled.
-- Explicit “and / then” continuations within 45 seconds retain the earlier goal and history; general
-  corrections and pronouns are not yet supported reliably.
+- Explicit “and / then” continuations within 45 seconds retain unfinished work. After verified
+  completion they start a fresh request on the current page; general corrections and pronouns remain limited.
 - Decisions are bounded by time, action count, repeated actions, stale-page checks and confidence gates.
   Challenges and empty pages cannot justify success. Credentials and account-changing actions are excluded.
 - Success is reported only when the requested outcome is verified in the observed page (below). Laya
@@ -46,13 +46,19 @@ The installed app does not enable goal mode by default. The complete microphone 
 ## Verified completion
 
 Before acting, Laya chooses the requested **outcome** from a finite set of contracts: open a site, search
-it, or open result *n* from its search. Rules propose the contracts from literal speech — the site named,
+it, open result *n*, operate a tab, or scroll. Rules propose contracts from literal speech — the site named,
 the query span, a spoken result number — and Laya picks one, or `unsupported`. The contract is then
 checked against every observation, so the loop stops on evidence rather than on the model's `DONE`:
 
 - **open_site** — the site's page rendered.
 - **search** — the site's search URL carries exactly the query, *and* its result list rendered.
 - **open_result** — the search was observed first, and the page is the *n*th result it listed.
+- **tabs / scrolling** — the requested tab identity/count or same-page scroll position changed as requested.
+
+After a search is verified, the numbered-result argument is bound to the observed URL. Only tools compatible
+with remaining work are offered; Laya still chooses whether to act, wait or report a blocker. An early DONE
+gets verifier feedback and bounded recovery, never a fabricated success. Known loading pages wait for DOM
+evidence for up to eight seconds, within the overall goal deadline.
 
 Evidence comes from the site pack's `browsing` probe (see [Writing site packs](SITE_PACKS.md)). This is a
 pilot on Wikipedia, YouTube and GitHub; other sites are refused rather than attempted unverified. A
@@ -77,10 +83,16 @@ pytest -q
 ruff check src tests scripts/benchmark_goal_loop.py
 python scripts/benchmark_goal_loop.py --output runs/goal-fixtures.json
 python scripts/benchmark_goal_loop.py --live --browser safari --output runs/goal-live.json
+python scripts/check_goal_milestone.py --output runs/milestone-check
 ```
 
 Live checks navigate test sites. Traces in ignored `runs/` may contain speech/page content; do not publish
 them without sanitizing. Historical experiments and design notes remain in Git history.
+
+The three-site development smoke test passed in Safari on 2026-09-23: Wikipedia → Mercury (3 actions),
+YouTube → ESP32 → first video page (2), GitHub → ESP32 repositories (1), with no extra actions after success.
+These are typed requests, not a microphone accuracy benchmark; opening a video page does not verify playback
+past ads. The smoke test checks fixed expected outcomes independently of the model-selected contract.
 
 Architecture references: [Laya browser training](https://github.com/NandhaKishorM/laya/blob/main/docs/finetune_browser_agent.md),
 [laya-mlx](https://github.com/mizorewww/laya-mlx), [Jev Ultrafast](https://github.com/browser-use/jev-ultrafast).

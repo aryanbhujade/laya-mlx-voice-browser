@@ -57,6 +57,8 @@ class Goal:
     decisions: int = 0
     prefix: str = ""
     contract: GoalContract | None = None
+    verification_feedback: str = ""
+    rejected_done: int = 0
 
 
 @dataclass(frozen=True)
@@ -142,6 +144,31 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
     """
     from .goal_contracts import definitions, observed_results
 
+    if goal.contract and goal.contract.new_tab and not any(
+            t.active and t.id not in goal.contract.initial_tabs for t in page.tabs):
+        return {"CLICK": {"browser:new_tab": Candidate(
+            "Open the requested new tab before navigating", {"type": "new_tab"}, source="browser")}}
+    # The outcome's ordinal is an argument selected/accepted by Laya, not a fresh ranking problem.
+    # Once search is verified, bind it to that observed result; unrelated results and retyping
+    # cannot satisfy the remaining work. Laya still chooses CLICK / WAIT / BLOCKED.
+    if (goal.contract and goal.contract.kind == "open_result" and goal.contract.search_observed
+            and goal.contract.expected_url):
+        return {"CLICK": {f"result:{goal.contract.ordinal}": Candidate(
+            f"Open requested result {goal.contract.ordinal}",
+            {"type": "navigate", "url": goal.contract.expected_url}, source="capability")}}
+    # A model-selected primitive outcome only admits compatible tools. Do not ask a second
+    # question to choose between closing a tab, clicking a video and going back.
+    if goal.contract and not goal.contract.site:
+        kind = goal.contract.kind
+        if kind in {"scroll_up", "scroll_down"}:
+            return {}
+        action = {"type": kind}
+        if kind == "switch_tab":
+            action["tab_id"] = goal.contract.target_tab
+        available = (kind == "new_tab" or (kind == "close_tab" and len(page.tabs) > 1)
+                     or (kind == "switch_tab" and any(t.id == goal.contract.target_tab for t in page.tabs)))
+        return {"CLICK": {f"browser:{kind}": Candidate(
+            goal.contract.label(), action, source="browser")}} if available else {}
     clicks: dict[str, Candidate] = {}
     fields: dict[str, Candidate] = {}
     spans = [goal.contract.query] if goal.contract and goal.contract.query else literal_spans(goal.text)
@@ -162,7 +189,7 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
     named = [name for name in HOMES
              if re.search(rf"\b{re.escape(name.replace('_', ' '))}\b", goal.text, re.I)]
     if goal.contract:
-        named = [goal.contract.site]
+        named = [goal.contract.site] if goal.contract.site else []
     for name in named:
         if page.url.rstrip("/") != HOMES[name].rstrip("/"):
             clicks[f"site:{name}"] = Candidate(f"Browser: open {name} website", {
@@ -171,7 +198,7 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
         clicks[f"url:{index}"] = Candidate(f"Browser: open {url}", {
             "type": "navigate", "url": as_https(url)}, source="browser")
     clicks["browser:back"] = Candidate("Browser: go back", {"type": "back"}, source="browser")
-    if not goal.contract or (goal.contract.new_tab and not any(
+    if not goal.contract or goal.contract.kind == "new_tab" or (goal.contract.new_tab and not any(
             t.active and t.id not in goal.contract.initial_tabs for t in page.tabs)):
         clicks["browser:new_tab"] = Candidate(
             "Browser: open a new tab", {"type": "new_tab"}, source="browser")
