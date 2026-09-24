@@ -42,6 +42,9 @@ def browser_blocker(page: Snapshot) -> str | None:
         return "browser_challenge"
     if page.title.casefold().strip(" .") in {"pardon our interruption", "access denied", "robot check"}:
         return "browser_challenge"
+    if (page.title.casefold().strip() == "error page | ebay"
+            and "something went wrong" in page.text[:500].casefold()):
+        return "browser_error"
     if "checking your browser before you access" in page.text[:500].casefold():
         return "browser_challenge"
     return None
@@ -70,8 +73,10 @@ class Candidate:
 
 
 def scope(url: str) -> str | None:
-    host = urlparse(url).hostname or ""
-    if host in {"ebay.com", "www.ebay.com", "ebay.co.uk", "www.ebay.co.uk"}:
+    from .sites import pack_for
+
+    pack = pack_for(url)
+    if pack and pack.browsing.get("site") == "ebay":
         return "ebay"
     return site_for_url(url)
 
@@ -96,6 +101,7 @@ def literal_spans(text: str) -> list[str]:
         )[0]
         tail = re.split(r"\s+(?:on|in|using)\s+(?:youtube|github|wikipedia|amazon|ebay|google)\b",
                         tail, maxsplit=1, flags=re.I)[0]
+        tail = re.split(r"\s+in\s+(?:a\s+)?new\s+tab\s*[.!?]*$", tail, maxsplit=1, flags=re.I)[0]
         tails.append(tail)
     for value in quoted + tails:
         value = value.strip(' .!?"“”')

@@ -392,7 +392,7 @@ def test_a_link_on_the_page_is_a_link_outcome_not_a_tab_or_scroll(text):
 
 @pytest.mark.parametrize("text,kinds", [
     ("close this tab", {"close_tab", "switch_tab"}),
-    ("open a new tab", {"new_tab", "switch_tab", "open_link"}),
+    ("open a new tab", {"new_tab", "open_link"}),
     ("switch to the GitHub tab", {"switch_tab"}),
     ("and scroll down", {"scroll_up", "scroll_down"}),
 ])

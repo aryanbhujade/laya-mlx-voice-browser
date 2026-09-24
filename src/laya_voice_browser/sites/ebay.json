@@ -1,6 +1,20 @@
 {
   "name": "eBay",
   "hosts": ["ebay.com", "ebay.co.uk", "ebay.ca", "ebay.com.au", "ebay.de", "ebay.fr", "ebay.it"],
+  "browsing": {
+    "site": "ebay", "home": "https://www.ebay.com/",
+    "search_url": "https://www.ebay.com/sch/i.html?_nkw={query}", "query_key": "_nkw",
+    "results_selector": "ul.srp-results, .srp-results",
+    "result_selector": ".srp-results a[href*='/itm/']",
+    "result_card_selector": "li.s-item, li.s-card",
+    "result_title_selector": ".s-item__title, .s-card__title",
+    "heading_selector": "h1.x-item-title__mainTitle, h1[itemprop='name']",
+    "detail_selector": ".x-item-title, #vi_main, #mainContent [data-testid='x-item-title']",
+    "navigation": [
+      {"label": "Next page of listings", "selector": "a.pagination__next[href], a[aria-label='Go to next search page'][href]"},
+      {"label": "Previous page of listings", "selector": "a.pagination__previous[href], a[aria-label='Go to previous search page'][href]"}
+    ]
+  },
   "actions": [
     {"id": "first_result", "description": "open the first item in the results",
      "say": ["(open|click|show me) the (first|top) (item|listing|result)"],

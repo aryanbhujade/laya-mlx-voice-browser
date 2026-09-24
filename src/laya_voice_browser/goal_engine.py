@@ -104,12 +104,12 @@ class GoalEngine(LayaEngine):
         self.warm()
         contracts = contract_options(goal, page)
         if not contracts:
-            raise UncertainDecision("Try one Wikipedia, YouTube or GitHub browsing goal at a time")
+            raise UncertainDecision("Try a supported site search, visible link, or browser control")
         result = GoalDecision("INTERPRET")
         descriptions = {
             "open_site": "Open the requested website. No search or result opening.",
             "search": "Search for the requested topic and show the results.",
-            "open_result": "Open a particular video, article or repository from search results.",
+            "open_result": "Open a particular video, article, repository or item from search results.",
             "close_tab": "Close the current browser tab.",
             "new_tab": "Open a new blank browser tab.",
             "switch_tab": "Switch to another existing browser tab.",
@@ -127,7 +127,7 @@ class GoalEngine(LayaEngine):
         if picked == "unsupported":
             raise UncertainDecision("The request needs clarification or is outside this browsing pilot")
         remaining = [c for c in contracts.values() if c.kind == picked]
-        if picked in {"search", "open_result"}:
+        if picked in {"search", "open_result"} and not all(c.query_from_page for c in remaining):
             queries = list(dict.fromkeys(c.query for c in remaining))
             query_options = {str(i): q for i, q in enumerate(queries)}
             query_options["none"] = "No supplied text is the requested query"
@@ -169,6 +169,17 @@ class GoalEngine(LayaEngine):
             remaining[0].expected_url = chosen.action["url"]
             remaining[0].link_label = chosen.label
         goal.contract = remaining[0]
+        if goal.contract.query_from_page:
+            from .goal_contracts import observed_results, search_matches
+
+            # Resolve the requested result while its source page is still available. Opening a
+            # new tab must not discard search context or require the query to be spoken again.
+            results = observed_results(page)
+            if (not search_matches(page, goal.contract.site, goal.contract.query)
+                    or len(results) < goal.contract.ordinal):
+                raise UncertainDecision("That result is not present in the current search")
+            goal.contract.search_observed = True
+            goal.contract.expected_url = results[goal.contract.ordinal - 1]["url"]
         goal.contract.new_tab = bool(re.search(r"\bnew\s+tab\b", goal.text, re.I))
         goal.contract.initial_tabs = tuple(t.id for t in page.tabs)
         goal.contract.initial_active_tab = next((t.id for t in page.tabs if t.active), "")

@@ -1,6 +1,6 @@
 """Finite goal outcomes selected by Laya, verified against observed browser state.
 
-This is deliberately a three-site pilot. Verification never selects a next action.
+Supported sites declare observations in their packs. Verification never selects a next action.
 Unknown outcomes are not successes; tool execution alone is not goal completion.
 """
 from __future__ import annotations
@@ -11,7 +11,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from .goals import Candidate, Goal, browser_blocker, literal_spans, safe_click, scope
 from .sites import browsing_probes
-from .types import Snapshot
+from .types import Element, Snapshot
 
 
 @dataclass
@@ -29,6 +29,7 @@ class GoalContract:
     initial_url: str = ""
     initial_scroll: float = 0
     link_label: str = ""
+    query_from_page: bool = False
 
     def label(self) -> str:
         if self.kind == "open_link":
@@ -73,6 +74,12 @@ def result_url(site: str, url: str) -> str | None:
         name = unquote(parsed.path[6:])
         if name and ":" not in name and name != "Main_Page":
             return f"https://{parsed.hostname}{parsed.path}"
+    if site == "ebay":
+        # Listing title/image/tracking URLs all identify one item. Category, ad placeholders,
+        # checkout and seller links are not listings and must not affect ordinal numbering.
+        match = re.fullmatch(r"/itm/(?:[^/]+/)?([0-9]{12})/?", parsed.path)
+        if match and match[1] != "000000000000":
+            return f"https://{parsed.hostname}/itm/{match[1]}"
     return None
 
 
@@ -134,9 +141,16 @@ _CONTROL_WORDS = {
     "switch_tab": re.compile(r"\btabs?\b", re.I),
 }
 # Opening a link is offered only when navigation is spoken, like every other outcome.
-_NAVIGATE_WORDS = re.compile(r"\b(?:open|click|show|view|visit|see|go\s+to|take\s+me\s+to)\b", re.I)
+_NAVIGATE_WORDS = re.compile(
+    r"\b(?:open|click|show|view|visit|see|go\s+to|take\s+me\s+to|(?:next|previous)\s+page)\b", re.I)
 # A veto, like missing_payload: a negated control is not an instruction to do anything.
 _NEGATED = re.compile(r"\b(?:don'?t|do\s+not|never|no\s+need\s+to)\b", re.I)
+# A blank-tab outcome cannot satisfy a destination plus a tab modifier. This only bounds
+# outcome coverage; Laya still chooses the outcome and the destination (or rejects both).
+_BLANK_TAB_REQUEST = re.compile(
+    r"^(?:(?:and|then)\s+)?(?:(?:can|could|would) you\s+)?(?:please\s+)?"
+    r"(?:open|create|make|give me)\s+(?:a\s+)?(?:new|another)(?:\s+blank)?\s+tab"
+    r"(?:\s+(?:please|for me))?[.!?]*$", re.I)
 
 
 _ORDINALS = {"first": 1, "1st": 1, "top": 1, "second": 2, "2nd": 2, "third": 3, "3rd": 3}
@@ -163,14 +177,27 @@ def link_options(page: Snapshot) -> dict[str, Candidate]:
 
     options: dict[str, Candidate] = {}
     seen = {_url_key(page.url)}  # a link to where the browser already is would verify having done nothing
+    listing_titles = ({item["url"]: item["title"] for item in observed_results(page)}
+                      if scope(page.url) == "ebay" else {})
     for element in page.elements:
-        label = (element.text or "").strip()
+        listing = result_url("ebay", element.href) if scope(page.url) == "ebay" else None
+        label = listing_titles.get(listing, element.text or "").strip()
         if not element.href or not label or not safe_click(element, page):
             continue
-        key = _url_key(element.href)
+        url = listing or element.href
+        key = _url_key(url)
         if key not in seen:
             seen.add(key)
-            options[element.id] = Candidate(f"{label[:60]} (link)", {"type": "navigate", "url": element.href})
+            options[element.id] = Candidate(f"{label[:60]} (link)", {"type": "navigate", "url": url})
+    # Pack selectors expose only navigation actually present on this page, including pagination
+    # below the viewport. They do not match the user's words or dispatch an action.
+    if page.browsing.get("site") == scope(page.url):
+        for index, item in enumerate(page.browsing.get("navigation", [])):
+            url, title = item.get("url", ""), item.get("title", "")
+            element = Element(f"nav:{index}", "link", title, "a", href=url)
+            if title and safe_click(element, page) and _url_key(url) not in seen:
+                seen.add(_url_key(url))
+                options[element.id] = Candidate(title, {"type": "navigate", "url": url}, source="pack")
     # The page's own links come first and win a shared URL. Putting the pack's longer labels first was
     # measured and was worse on real pages (6/12 right with 2 wrong links, against 8/12 with 1).
     pack = sites.pack_for(page.url)
@@ -204,12 +231,14 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
     navigation_text = goal.text
     for span in sorted(spans, key=len, reverse=True):
         navigation_text = navigation_text.replace(span, "")
+    if _NEGATED.search(navigation_text):
+        return {}
     named = [s for s in HOMES if re.search(rf"\b{re.escape(s.replace('_', ' '))}\b", navigation_text, re.I)]
     sites = named or [scope(page.url)]
     # A restriction against dropping explicitly requested work, not an action-selection rule.
     result_clause = re.search(
         r"\b(?:open|play|watch|click|show)\s+(?:me\s+)?(?:on\s+)?(?:the\s+)?"
-        r"(?:first|second|third|top|1st|2nd|3rd|video|result|repository)\b", goal.text, re.I)
+        r"(?:first|second|third|top|1st|2nd|3rd|video|result|repository|listing|item)\b", goal.text, re.I)
     # "third" is a literal argument, like the query; offering 1-3 made Laya guess between them and it
     # scored near-uniform for anything but "first". Laya still decides whether a result is requested.
     ordinals = (spoken_ordinals(goal.text[result_clause.start():]) if result_clause else []) or [1, 2, 3]
@@ -222,11 +251,11 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
         if "scroll" in spoken:
             options.update({kind: GoalContract("", kind) for kind in ("scroll_up", "scroll_down")})
         if page.tabs:
-            if "new_tab" in spoken:
+            if "new_tab" in spoken and _BLANK_TAB_REQUEST.fullmatch(goal.text.strip()):
                 options["new_tab"] = GoalContract("", "new_tab")
             if "close_tab" in spoken and len(page.tabs) > 1 and any(t.active for t in page.tabs):
                 options["close_tab"] = GoalContract("", "close_tab")
-            if "switch_tab" in spoken:
+            if "switch_tab" in spoken and "new_tab" not in spoken:
                 for tab in page.tabs:
                     if not tab.active:
                         options[f"tab:{tab.id}"] = GoalContract("", "switch_tab", target_tab=tab.id)
@@ -258,7 +287,7 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
         if len(values) == 1:
             for ordinal in ordinals:
                 options[f"result:{site}:current:{ordinal}"] = GoalContract(
-                    site, "open_result", values[0], ordinal)
+                    site, "open_result", values[0], ordinal, query_from_page=True)
     return options
 
 

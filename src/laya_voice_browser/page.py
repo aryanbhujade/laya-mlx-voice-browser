@@ -55,12 +55,17 @@ if (pack) {
   const resultLinks = [...document.querySelectorAll(pack.result_selector)].filter(rendered);
   const results = [], seen = new Set();
   for (const el of resultLinks) {
-    const href = el.href, title = label(el) || label(el.closest('ytd-video-renderer, yt-lockup-view-model') || el);
+    const card = pack.result_card_selector ? el.closest(pack.result_card_selector) : null;
+    const cardTitle = card && pack.result_title_selector ? card.querySelector(pack.result_title_selector) : null;
+    const href = el.href, title = (cardTitle ? label(cardTitle) : '') || label(el) || label(el.closest('ytd-video-renderer, yt-lockup-view-model') || el);
     if (href && title && !seen.has(href)) { results.push({url: href, title}); seen.add(href); }
     if (results.length >= 30) break;
   }
   const heading = [...document.querySelectorAll(pack.heading_selector)].find(rendered);
-  browsing = {site: pack.site, heading: heading ? heading.textContent.trim().slice(0, 200) : '', results,
+  const navigation = (pack.navigation || []).flatMap((control) =>
+    [...document.querySelectorAll(control.selector)].filter(el => rendered(el) && el.href && el.getAttribute('aria-disabled') !== 'true')
+      .map(el => ({title: control.label, url: el.href})));
+  browsing = {site: pack.site, heading: heading ? heading.textContent.trim().slice(0, 200) : '', results, navigation,
     results_ready: [...document.querySelectorAll(pack.results_selector)].some(rendered),
     detail_ready: [...document.querySelectorAll(pack.detail_selector)].some(rendered)};
 }

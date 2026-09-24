@@ -79,8 +79,34 @@ gets verifier feedback and bounded recovery, never a fabricated success. Known l
 evidence for up to eight seconds, within the overall goal deadline.
 
 Evidence comes from the site pack's `browsing` probe (see [Writing site packs](SITE_PACKS.md)). This is a
-pilot on Wikipedia, YouTube and GitHub; other sites are refused rather than attempted unverified. A
-browser challenge never counts as success.
+pilot tested on Wikipedia, YouTube and GitHub. eBay search/listing observations are now implemented
+but live Safari validation is pending; other site-search outcomes are refused rather than attempted
+unverified. Generic observed links can be opened on other sites. A browser challenge never counts
+as success.
+
+### eBay milestone (development)
+
+- The pack declares search/listing evidence and observed pagination links, not command regexes for
+  the goal loop. Item IDs deduplicate thumbnail/title/tracking links; placeholder listings do not count.
+- "Open the second listing" binds the current search and result URL before leaving that page. It
+  does not ask Laya to extract a query that was never spoken. A requested new tab retains that URL.
+- "Open vintage cameras in a new tab" cannot choose a blank-tab-only outcome that drops the
+  destination. Laya must choose a link or decline. "Scroll back up" is a direct scroll, not history.
+- Filters, price/condition/sort changes, purchases and account actions remain outside this milestone.
+  Follow-up clarification replies such as "number one" are not implemented in the goal loop.
+- Synthetic regression tests and DOM checks pass. Local-model synthetic probes still abstain on
+  "click on the second item"; no real-site accuracy claim follows from these tests. Live Safari
+  comparison reached eBay's browser challenge, so shopping-site reliability remains unverified.
+
+After quitting Safari normally, run the private, signed-out acceptance journeys:
+
+```bash
+python scripts/exercise_goal_browser.py --scenario ebay-categories --scenario ebay-search --scenario ebay-followups
+```
+
+These replay the logged category/search/new-tab/scroll journey with expected destinations independent
+of the model's chosen contract. Setup is not credited to Laya; unavailable controls block dependent
+checks. Keep the resulting page traces under ignored `runs/`, not in the public repository.
 
 Measured on 13 spoken goals with the browser checkpoint: 12 got kind, query and result number all
 right. "go to github" abstained (Laya split 0.53/0.47 between unsupported and open_site), which fails
@@ -106,6 +132,66 @@ python scripts/check_goal_milestone.py --output runs/milestone-check
 
 Live checks navigate test sites. Traces in ignored `runs/` may contain speech/page content; do not publish
 them without sanitizing. Historical experiments and design notes remain in Git history.
+
+### Paired development comparison, 2026-09-24
+
+Published `main` (`a85d294`, legacy controller, `aac6fef/laya-mlx`) versus this branch with goal mode
+enabled (`cklxx/laya-browser/v10s`). This compares complete systems, not architecture alone: the
+checkpoint differs too. Neither the installed default mode nor main was changed. These are typed
+transcript tests, not microphone/ASR measurements, and not a held-out product-accuracy estimate.
+
+`scripts/compare_branches.py` runs identical requests through each version's actual model/controller.
+Browser effects are simulated. Twenty cases use previously captured public-page element inventories;
+the other cases use synthetic observations for controlled multi-step transitions. Explicit expectations
+score destination/query/tab/scroll effects, never the model's own chosen contract. The historical
+Alison Frantz target label was corrected: her portrait is not her article.
+
+| Paired replay group | Main passes | Goal-loop passes |
+| --- | ---: | ---: |
+| Links on saved real pages | 19/20 | 11/20 |
+| Site searches | 7/12 | 7/12 |
+| Separate open-site / search follow-ups | 7/12 | 8/12 |
+| Search then open numbered result, one request | 0/9 | 6/9 |
+| Numbered result on current search page | 2/9 | 9/9 |
+| Destination in a new tab | 0/4 | 4/4 |
+| Category / scroll / back journey | 2/5 | 4/5 |
+| Basic browser controls | 5/6 | 4/6 |
+| Tabs | 5/5 | 3/5 |
+| Negated, side-talk or incomplete requests | 7/9 | 9/9 |
+| Unfinished speech must not act | 5/5 | 5/5 |
+
+Coverage is 59/96 for main and 70/96 for the loop, including dependent steps that could not run
+(3 main, 2 loop). Do not relabel these coverage fractions as general accuracy. The loop's wrong
+portrait selection reported `verified_done`; URL arrival still does not prove intended-link correctness.
+The replay observed 22 wrong-action cases on main versus 1 on the loop; incomplete/abstaining cases
+were 12 versus 23. A search containing "and open the first video" as query text is a wrong query,
+not merely unfinished work. These counts apply only to this development suite.
+
+`scripts/compare_live.py` also scheduled 25 steps per version in owned Safari sessions, with bounded
+render waits and independent expected links. Main completed 5; the loop completed 15. Different
+dependent steps became reachable, and Google/eBay challenges prevented a clean global percentage.
+The loop completed Wikipedia compound/follow-up searches, the five-step YouTube search/result/back/
+new-tab/close journey, and Talk-in-a-new-tab. It abstained on GitHub's second repository: interpretation
+was correct, but operation scores split between DONE (0.4942) and CLICK (0.361). Main sent Wikipedia
+and GitHub follow-up searches to a web search engine, lost the target after opening a blank tab,
+and interpreted "scroll back up" as Back. A wrong Back landing on a challenge is still an agent error.
+
+Next priorities: distinguish same-label destinations (article vs image); prevent premature DONE from
+blocking known-unfinished work without forcing clicks; improve target/operation calibration on real
+pages; restore relative tabs/reload and generic web search; then extend shopping controls after live
+observation. Keep Laya selecting actions; do not turn failing phrases into automatic regex dispatch.
+
+Reproduce with fresh private output directories (do not reuse an old trace directory):
+
+```bash
+python scripts/compare_branches.py --source /path/to/main-checkout --mode legacy --output runs/main-replay
+python scripts/compare_branches.py --source . --mode goal --output runs/goal-replay
+python scripts/compare_live.py --source /path/to/main-checkout --mode legacy --output runs/main-live
+python scripts/compare_live.py --source . --mode goal --output runs/goal-live
+```
+
+Replay fixes browser/search-engine settings to Safari/Google in a private temporary config file;
+live runs retain the user's settings. These tests do not publish traces, model weights or screenshots.
 
 The three-site development smoke test passed in Safari on 2026-09-23: Wikipedia → Mercury (3 actions),
 YouTube → ESP32 → first video page (2), GitHub → ESP32 repositories (1), with no extra actions after success.

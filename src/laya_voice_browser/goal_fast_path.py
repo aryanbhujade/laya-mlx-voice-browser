@@ -11,7 +11,7 @@ def direct_action(text: str) -> dict | None:
         return {"type": "back"}
     if re.fullmatch(r"(?:go )?forward", phrase):
         return {"type": "forward"}
-    match = re.fullmatch(r"scroll (up|down)(?: (a little|a bit|a page|one page|more))?", phrase)
+    match = re.fullmatch(r"scroll (?:back )?(up|down)(?: (a little|a bit|a page|one page|more))?", phrase)
     if match:
         return {"type": "scroll", "direction": match[1],
                 "amount": "little" if match[2] in {"a little", "a bit"} else "page"}
