@@ -37,7 +37,7 @@ def _domain() -> str:
     return f"gui/{os.getuid()}"
 
 
-def launch_agent(python: str | None = None, app: Path | None = None) -> dict:
+def launch_agent(python: str | None = None, app: Path | None = None, *, goal_loop: bool = True) -> dict:
     """launchd runs the signed LayaBrowse app, which runs Python as its child.
 
     Pointing launchd at the app (not at python) is what makes macOS show "LayaBrowse" in the background
@@ -54,7 +54,7 @@ def launch_agent(python: str | None = None, app: Path | None = None) -> dict:
     log = str(log_path())
     return {
         "Label": LABEL,
-        "ProgramArguments": [str(app or app_binary()), "--service"],
+        "ProgramArguments": [str(app or app_binary()), "--service"] + ([] if goal_loop else ["--legacy"]),
         "AssociatedBundleIdentifiers": [APP_BUNDLE_ID],
         "EnvironmentVariables": environment,
         "RunAtLoad": True,
@@ -87,21 +87,22 @@ def _stop_loaded(timeout: float = 10.0) -> None:
         (plist_path().parent / f"{label}.plist").unlink(missing_ok=True)
 
 
-def install(*, prepare_model: bool = True) -> int:
+def install(*, prepare_model: bool = True, goal_loop: bool = True) -> int:
     from .speech import build_native_helper
 
     print("Building LayaBrowse…", flush=True)
     build_native_helper()
     if prepare_model:
+        from .goal_engine import GoalEngine
         from .laya import LayaEngine
 
-        engine = LayaEngine()
+        engine = GoalEngine() if goal_loop else LayaEngine()
         print(f"Downloading and checking {engine.model_name}…", flush=True)
         engine.warm()
     log_path().parent.mkdir(parents=True, exist_ok=True)
     plist_path().parent.mkdir(parents=True, exist_ok=True)
     with plist_path().open("wb") as handle:
-        plistlib.dump(launch_agent(), handle)
+        plistlib.dump(launch_agent(goal_loop=goal_loop), handle)
     _stop_loaded()
     result = _launchctl("bootstrap", _domain(), str(plist_path()))
     for _ in range(10):
@@ -115,6 +116,7 @@ def install(*, prepare_model: bool = True) -> int:
         return 2
     print(
         "Installed. LayaBrowse now runs in the background and starts at login.\n"
+        f"Engine: {'Laya goal loop' if goal_loop else 'legacy rules-first'}\n"
         "macOS will ask to allow LayaBrowse to use the microphone and speech recognition.\n"
         "Then double-tap left Control anywhere to talk (change the shortcut in the menu-bar icon).\n"
         f"Logs: {log_path()}",
@@ -138,7 +140,13 @@ def status() -> int:
     running = "state = running" in result.stdout
     pid = next((line.split("=")[1].strip() for line in result.stdout.splitlines() if "pid =" in line), None)
     state = f"yes (pid {pid})" if running and pid else "no"
-    print(f"Installed: yes\nRunning: {state}\nLogs: {log_path()}")
+    try:
+        with plist_path().open("rb") as handle:
+            goal_loop = "--legacy" not in plistlib.load(handle).get("ProgramArguments", [])
+        mode = "Laya goal loop" if goal_loop else "legacy rules-first"
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        mode = "unknown (cannot read LaunchAgent)"
+    print(f"Installed: yes\nRunning: {state}\nConfigured engine: {mode}\nLogs: {log_path()}")
     return 0 if running else 3
 
 

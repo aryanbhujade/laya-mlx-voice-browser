@@ -1,3 +1,4 @@
+import plistlib
 import threading
 from pathlib import Path
 
@@ -24,6 +25,49 @@ def test_launch_agent_restarts_after_crashes_but_not_after_quit(monkeypatch):
 
 def test_service_commands_are_routed_before_foreground_flags():
     assert {"install", "uninstall", "status", "logs", "daemon"} <= SERVICE_COMMANDS
+
+
+def test_goal_mode_is_the_launch_default_with_legacy_opt_in():
+    app = Path("/app/LayaBrowse")
+    assert service.launch_agent(app=app)["ProgramArguments"] == [str(app), "--service"]
+    assert service.launch_agent(app=app, goal_loop=False)["ProgramArguments"] == [
+        str(app), "--service", "--legacy"]
+
+
+def test_install_cli_uses_goal_mode_by_default_and_preserves_legacy_opt_in(monkeypatch):
+    from laya_voice_browser.cli import service_main
+
+    calls = []
+    monkeypatch.setattr(service, "install", lambda **kw: calls.append(kw) or 0)
+    assert service_main("install", ["--goal-loop", "--skip-model"]) == 0
+    assert calls[-1] == {"prepare_model": False, "goal_loop": True}
+    assert service_main("install", []) == 0
+    assert calls[-1] == {"prepare_model": True, "goal_loop": True}
+    assert service_main("install", ["--legacy"]) == 0
+    assert calls[-1] == {"prepare_model": True, "goal_loop": False}
+
+
+@pytest.mark.parametrize("goal_loop", [True, False])
+def test_install_warms_the_engine_that_the_native_app_will_run(monkeypatch, tmp_path, goal_loop):
+    from types import SimpleNamespace
+
+    from laya_voice_browser import goal_engine, laya, speech
+
+    warmed = []
+    monkeypatch.setattr(goal_engine, "GoalEngine", lambda: SimpleNamespace(
+        model_name="goal", warm=lambda: warmed.append("goal")))
+    monkeypatch.setattr(laya, "LayaEngine", lambda: SimpleNamespace(
+        model_name="standard", warm=lambda: warmed.append("standard")))
+    monkeypatch.setattr(speech, "build_native_helper", lambda: None)
+    monkeypatch.setattr(service, "plist_path", lambda: tmp_path / "agent.plist")
+    monkeypatch.setattr(service, "log_path", lambda: tmp_path / "service.log")
+    monkeypatch.setattr(service, "_stop_loaded", lambda: None)
+    monkeypatch.setattr(service, "_launchctl", lambda *args: SimpleNamespace(returncode=0))
+    assert service.install(goal_loop=goal_loop) == 0
+    assert warmed == ["goal" if goal_loop else "standard"]
+    with service.plist_path().open("rb") as handle:
+        arguments = plistlib.load(handle)["ProgramArguments"]
+    assert ("--legacy" in arguments) != goal_loop
 
 
 class FlakyBrowser:

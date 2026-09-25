@@ -19,6 +19,7 @@ if CommandLine.arguments.contains("--benchmark-speech") {
 let arguments = CommandLine.arguments
 let environment = ProcessInfo.processInfo.environment
 let serviceMode = arguments.contains("--service")
+let goalLoop = !arguments.contains("--legacy")
 
 // Opened by the user (Finder, Spotlight, Dock): hand over to the installed background service, which
 // owns the Python backend. A copy started here would have no backend and silently do nothing.
@@ -46,7 +47,8 @@ if serviceMode {
         log("LAYA_PYTHON is not set; reinstall with `layabrowse install`")
         exit(1)
     }
-    let process = BackendProcess(python: python, island: island)
+    let process = BackendProcess(python: python, island: island, goalLoop: goalLoop)
+    process.onDisconnect = { speech.backendDisconnected() }
     backend = process
     Output.sink = { line in process.send(line) }
     process.start()
@@ -74,6 +76,7 @@ if serviceMode {
 
 let menuBar = MenuBarItem(
     settings: settings,
+    goalLoop: goalLoop,
     onToggle: { speech.toggleListening() },
     onChange: { updated in
         settings = updated

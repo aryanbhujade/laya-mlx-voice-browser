@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .browser import BrowserSessionLost, NoMedia, StalePage, Unavailable, pick_tab
+from .browser import NEW_TAB_URL, BrowserSessionLost, NoMedia, StalePage, Unavailable, pick_tab
 from .page import (
     CANDIDATES_JS,
     FOCUS_FIELD_JS,
@@ -248,7 +248,7 @@ class ChromiumBrowser:
         self._last_pages = pages
         ids = [page["targetId"] for page in pages]
         if not ids:
-            self._target = self._cdp.call("Target.createTarget", {"url": "about:blank"})["targetId"]
+            self._target = self._cdp.call("Target.createTarget", {"url": NEW_TAB_URL})["targetId"]
             return self._target
         if self._target in ids and self._visible(self._target):
             return self._target
@@ -355,7 +355,9 @@ class ChromiumBrowser:
         elif kind == "site":
             self._site(target, action, before_url)
         elif kind == "new_tab":
-            self._activate(self._cdp.call("Target.createTarget", {"url": "about:blank"})["targetId"])
+            created = self._cdp.call("Target.createTarget", {"url": NEW_TAB_URL})["targetId"]
+            self._activate(created)
+            self._wait_loaded(created, None, NAVIGATION_TIMEOUT_SECONDS, require_change=False)
         elif kind == "close_tab":
             ids = [page["targetId"] for page in self._pages()]
             if len(ids) <= 1:

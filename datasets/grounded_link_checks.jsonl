@@ -1,0 +1,30 @@
+{"page":"wikipedia_main","transcript":"open the photo of Alison Frantz","targets":["e21"]}
+{"page":"wikipedia_main","transcript":"open the photo of Alison Frantz","targets":["e21"],"reverse":true}
+{"page":"wikipedia_main","transcript":"show me what Alison Frantz looked like","targets":["e21"]}
+{"page":"wikipedia_main","transcript":"show me what Alison Frantz looked like","targets":["e21"],"reverse":true}
+{"page":"wikipedia_main","transcript":"can you open the Alison Frantz article please","targets":["e22"]}
+{"page":"wikipedia_main","transcript":"can you open the Alison Frantz article please","targets":["e22"],"reverse":true}
+{"page":"wikipedia_article","transcript":"could you click the Turing machine link","targets":["e32"]}
+{"page":"wikipedia_article","transcript":"could you click the Turing machine link","targets":["e32"],"reverse":true}
+{"page":"wikipedia_article","transcript":"please open cryptanalyst","targets":["e26"]}
+{"page":"hacker_news","transcript":"please open Can gzip be a language model","targets":["e12"]}
+{"page":"hacker_news","transcript":"please open Can gzip be a language model","targets":["e12"],"reverse":true}
+{"page":"hacker_news","transcript":"click Attention is all you have please","targets":["e54"]}
+{"page":"hacker_news","transcript":"click Attention is all you have please","targets":["e54"],"reverse":true}
+{"page":"duckduckgo_results","transcript":"can you click Images please","targets":["e06"]}
+{"page":"duckduckgo_results","transcript":"can you click Images please","targets":["e06"],"reverse":true}
+{"page":"duckduckgo_results","transcript":"please open the Wikipedia result about Alan Turing","targets":["e19"]}
+{"page":"duckduckgo_results","transcript":"please open the Wikipedia result about Alan Turing","targets":["e19"],"reverse":true}
+{"page":"duckduckgo_results","transcript":"click the news tab","targets":["e07"]}
+{"page":"wikipedia_main","transcript":"I read about Alison Frantz yesterday","none":true}
+{"page":"wikipedia_main","transcript":"I read about Alison Frantz yesterday","none":true,"reverse":true}
+{"page":"wikipedia_main","transcript":"I said open the Alison Frantz article yesterday","none":true}
+{"page":"wikipedia_main","transcript":"don't open the photo of Alison Frantz","none":true}
+{"page":"hacker_news","transcript":"we should open attention is all you have later","none":true}
+{"page":"hacker_news","transcript":"I said click attention is all you have yesterday","none":true}
+{"page":"hacker_news","transcript":"the instructions say open what Sun got wrong","none":true}
+{"page":"hacker_news","transcript":"Can gzip be a language model sounds interesting","none":true}
+{"page":"duckduckgo_results","transcript":"I saw that Wikipedia result","none":true}
+{"page":"duckduckgo_results","transcript":"I wonder whether to open Wikipedia","none":true}
+{"page":"duckduckgo_results","transcript":"do not click the images tab","none":true}
+{"page":"duckduckgo_results","transcript":"open the missing violet platypus article","none":true}

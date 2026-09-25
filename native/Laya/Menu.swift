@@ -52,13 +52,15 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private var settings: LayaSettings
     private var listening = false
+    private let goalLoop: Bool
     private let onToggle: () -> Void
     private let onChange: (LayaSettings) -> Void
     private let onQuit: () -> Void
 
-    init(settings: LayaSettings, onToggle: @escaping () -> Void,
+    init(settings: LayaSettings, goalLoop: Bool = false, onToggle: @escaping () -> Void,
          onChange: @escaping (LayaSettings) -> Void, onQuit: @escaping () -> Void) {
         self.settings = settings
+        self.goalLoop = goalLoop
         self.onToggle = onToggle
         self.onChange = onChange
         self.onQuit = onQuit
@@ -98,6 +100,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         refreshIcon()
         menu.addItem(disabled("LayaBrowse"))
+        menu.addItem(disabled(goalLoop ? "Laya goal loop" : "Legacy browsing"))
         menu.addItem(disabled(settings.hotkeyOption.instruction))
 
         let missing = Permission.missing(for: settings)

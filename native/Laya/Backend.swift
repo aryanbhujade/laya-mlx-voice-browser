@@ -37,6 +37,8 @@ func log(_ message: String) {
 final class BackendProcess {
     private let python: String
     private let island: NotchIsland
+    private let goalLoop: Bool
+    var onDisconnect: (() -> Void)?
     private var process: Process?
     private var input: FileHandle?
     private var buffered = Data()
@@ -44,15 +46,16 @@ final class BackendProcess {
     private var failures = 0
     private var startedAt = Date()
 
-    init(python: String, island: NotchIsland) {
+    init(python: String, island: NotchIsland, goalLoop: Bool = false) {
         self.python = python
         self.island = island
+        self.goalLoop = goalLoop
     }
 
     func start() {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: python)
-        process.arguments = ["-m", "laya_voice_browser", "backend"]
+        process.arguments = ["-m", "laya_voice_browser", "backend"] + (goalLoop ? [] : ["--legacy"])
         var environment = ProcessInfo.processInfo.environment
         environment["PYTHONUNBUFFERED"] = "1"
         process.environment = environment
@@ -117,7 +120,11 @@ final class BackendProcess {
     private func exited(status: Int32) {
         process = nil
         input = nil
+        buffered.removeAll()
         guard !stopping else { return }
+        // The replacement starts paused. Drop the old listening session and require a new
+        // deliberate shortcut press; never keep recording into a disconnected backend.
+        onDisconnect?()
         failures = Date().timeIntervalSince(startedAt) > 30 ? 1 : failures + 1
         let delay = min(60, pow(2, Double(failures)))
         log("backend exited (status \(status)); restarting in \(Int(delay))s")

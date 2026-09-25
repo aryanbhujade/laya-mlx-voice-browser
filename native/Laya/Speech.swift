@@ -150,6 +150,10 @@ final class SpeechController {
         startSegment()
     }
 
+    func backendDisconnected() {
+        stopVoiceControl()
+    }
+
     private func stopVoiceControl() {
         guard voiceControlActive else { return }
         voiceControlActive = false
@@ -241,6 +245,7 @@ final class SpeechController {
             activity.restart()
             startAudioWatchdog()
         } catch {
+            Output.signal("voice_off")
             cleanupSegment(cancelTask: true)
             voiceControlActive = false
             island.hide()

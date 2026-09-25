@@ -7,6 +7,13 @@
     "google.com.au",
     "google.co.in"
   ],
+  "browsing": {
+    "site": "google", "home": "https://www.google.com/",
+    "search_url": "https://www.google.com/search?q={query}", "query_key": "q",
+    "results_selector": "#search, #rso",
+    "result_selector": "#search a:has(h3), #rso a:has(h3)",
+    "heading_selector": "h1", "detail_selector": "main, article"
+  },
   "actions": [
     {
       "id": "first_result",

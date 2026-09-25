@@ -6,6 +6,8 @@ from typing import Any, Protocol
 
 from .types import Snapshot
 
+NEW_TAB_URL = "https://www.google.com/"
+
 
 def pick_tab(ids: list[str], current: str, action: dict[str, Any]) -> str:
     """The tab an action refers to: an explicit id, a direction relative to the current tab, or the

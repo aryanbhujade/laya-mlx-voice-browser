@@ -48,6 +48,8 @@ def run(model: str | None = None, trace: Path | None = None, *, goal_loop: bool 
     browser = SettingsBrowser()
     controller_type = GoalController if goal_loop else StreamingController
     controller = controller_type(browser, engine, trace_path=trace, status=status, announce=log)
+    if goal_loop:
+        controller.pause()
 
     def on_signal(name: str) -> None:
         if name == "voice_on":
@@ -66,13 +68,16 @@ def run(model: str | None = None, trace: Path | None = None, *, goal_loop: bool 
             started = time.monotonic()
             try:
                 log("speech helper starting; double-tap left Control to talk")
-                for event in native_events(status_port=status.port, on_signal=on_signal):
+                for event in native_events(status_port=status.port, on_signal=on_signal, goal_loop=goal_loop):
                     controller.submit(event)
             except HelperQuit:
                 log("quit from the menu bar")
                 return 0
             except RuntimeError as exc:
                 log(f"speech helper stopped: {exc}")
+            finally:
+                if goal_loop:
+                    controller.pause()
             # Back off while the helper keeps failing (e.g. a permission not granted yet).
             failures = 1 if time.monotonic() - started > HEALTHY_RUN_SECONDS else failures + 1
             delay = min(HELPER_RETRY_MAX_SECONDS, 2.0**failures)

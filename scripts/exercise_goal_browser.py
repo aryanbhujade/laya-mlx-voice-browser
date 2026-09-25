@@ -27,6 +27,25 @@ def step(id, text, expect, *, requires=None, final=True):
 
 
 SCENARIOS = {
+    "blank-tab-navigation": (["https://www.google.com/", "about:blank",
+                             "https://github.com/fastapi/fastapi"], [
+        step("first", "go to the first tab", {"tab_ref": "setup0"}),
+        step("next-blank", "next tab", {"tab_ref": "setup1"}, requires="first"),
+        step("last", "go to the last tab", {"tab_ref": "setup2"}),
+        step("previous-blank", "go to the previous tab", {"tab_ref": "setup1"}, requires="last"),
+        step("named", "switch to the GitHub tab", {"tab_ref": "setup2"}),
+        step("close-others-unsupported", "close all other tabs", {"no_action": True}),
+        step("new-google", "open a new tab", {"new_tab": True, "site": "google.com"}),
+        step("close-new", "close this tab", {"close_tab": True}, requires="new-google"),
+    ]),
+    "google-new-tabs": ("about:blank", [
+        step("blank-search", "search for Steve Jobs", {"search": ["google.com", "q", "Steve Jobs"]}),
+        step("new-google", "open a new tab", {"new_tab": True, "site": "google.com"}),
+        step("github", "in a new tab open GitHub and search for ESP32",
+             {"new_tab": True, "search": ["github.com", "q", "ESP32"]}, requires="new-google"),
+        step("generic-new-search", "open a new tab and search for Ada Lovelace",
+             {"new_tab": True, "search": ["google.com", "q", "Ada Lovelace"]}),
+    ]),
     "ebay-categories": ("https://www.ebay.com/", [
         step("electronics", "can you click on electronics", {"label": "Electronics"}),
         step("cameras", "click on cameras and photo", {"label": "Cameras & Photo"},

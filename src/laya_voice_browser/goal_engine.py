@@ -99,24 +99,55 @@ class GoalEngine(LayaEngine):
 
     def prepare(self, goal: Goal, page: Snapshot) -> GoalDecision:
         """Laya selects the whole requested outcome before choosing any browser action."""
-        from .goal_contracts import contract_options
+        from .goal_contracts import contract_options, definitions, link_options, navigation_request
+        from .goals import HOMES
 
         self.warm()
         contracts = contract_options(goal, page)
         if not contracts:
             raise UncertainDecision("Try a supported site search, visible link, or browser control")
         result = GoalDecision("INTERPRET")
+        # A concrete nomination is NOT permission to act. The subsequent outcome question
+        # checks that opening it is actually requested and covers the whole utterance.
+        # Searches/result chains retain their own outcome schema and cannot degrade to a link.
+        nominated = None
+        kinds = {c.kind for c in contracts.values()}
+        if kinds <= {"open_link", "open_site"} and not navigation_request(goal.text):
+            raise UncertainDecision("Ask directly to open a destination; indirect speech cannot act")
+        if "open_link" in kinds and kinds <= {"open_link", "open_site"}:
+            destinations = link_options(page)
+            for key, contract in contracts.items():
+                if contract.kind == "open_site":
+                    destinations[key] = Candidate(f"{contract.site} homepage — {HOMES[contract.site]}",
+                                                  {"type": "navigate", "url": HOMES[contract.site]},
+                                                  source="site")
+            if not destinations:
+                raise UncertainDecision("There is no link on this page to open")
+            destinations["none"] = Candidate("None of these is the requested destination",
+                                              {"type": "none"}, source="none")
+            nominated = self._target(goal, page, destinations, result)
+            if nominated.source == "none":
+                exc = UncertainDecision("Which destination should I open?")
+                exc.decision = asdict(result)
+                raise exc
+            selected_kind = "open_site" if nominated.source == "site" else "open_link"
+            contracts = {key: c for key, c in contracts.items() if c.kind == selected_kind}
         descriptions = {
             "open_site": "Open the requested website. No search or result opening.",
             "search": "Search for the requested topic and show the results.",
             "open_result": "Open a particular video, article, repository or item from search results.",
             "close_tab": "Close the current browser tab.",
-            "new_tab": "Open a new blank browser tab.",
+            "close_other_tabs": "Close all other tabs and keep the current tab open.",
+            "new_tab": "Open a new browser tab with Google ready for searching.",
             "switch_tab": "Switch to another existing browser tab.",
             "scroll_up": "Scroll up on the current page.",
             "scroll_down": "Scroll down on the current page.",
             "open_link": "Open a link or a named part of this site, such as Talk, Issues or Pull requests.",
         }
+        for definition in definitions().values():
+            descriptions.update(definition.get("media_controls", {}))
+        if nominated:
+            descriptions[selected_kind] = f'Click the destination labelled "{nominated.label}".'
         options = {c.kind: descriptions[c.kind] for c in contracts.values()}
         options["unsupported"] = "Not a command, ambiguous, or these outcomes omit part of the request"
         picked = self._ask("objective", goal, page, options,
@@ -125,7 +156,9 @@ class GoalEngine(LayaEngine):
                            "Unrelated speech, unsupported actions or missing details mean unsupported.",
                            result)
         if picked == "unsupported":
-            raise UncertainDecision("The request needs clarification or is outside this browsing pilot")
+            exc = UncertainDecision("The request needs clarification or is outside this browsing pilot")
+            exc.decision = asdict(result)
+            raise exc
         remaining = [c for c in contracts.values() if c.kind == picked]
         if picked in {"search", "open_result"} and not all(c.query_from_page for c in remaining):
             queries = list(dict.fromkeys(c.query for c in remaining))
@@ -147,23 +180,30 @@ class GoalEngine(LayaEngine):
                 raise UncertainDecision("Specify which result to open, for example the first video")
             remaining = [c for c in remaining if c.ordinal == int(ordinal)]
         if picked == "switch_tab":
-            tab_options = {t.id: t.title or t.url or "Untitled tab" for t in page.tabs if not t.active}
-            tab_options["none"] = "The requested tab cannot be identified"
+            from .goals import tab_candidates
+
+            tabs = tab_candidates(page)
+            tab_options = {key: candidate.label for key, candidate in tabs.items()}
+            if not (len(tabs) == 1 and re.search(r"\bother\s+tab\b", goal.text, re.I)):
+                tab_options["none"] = "The requested tab cannot be identified"
             tab = self._ask("objective_tab", goal, page, tab_options,
-                            "Choose the existing tab requested by the speaker.", result)
+                            "Choose the existing browser tab requested by the speaker. "
+                            "Labels give each tab number and first/last/next/previous position relative "
+                            "to the active tab. For a position request, match that position; for a named "
+                            "tab, match its title or domain. Choose none only if no listed tab matches.",
+                            result)
             if tab == "none":
                 raise UncertainDecision("Which tab should I switch to?")
-            remaining = [c for c in remaining if c.target_tab == tab]
+            remaining = [c for c in remaining if c.target_tab == tabs[tab].action["tab_id"]]
         if picked == "open_link":
-            from .goal_contracts import link_options
-            from .goals import Candidate
-
-            links = link_options(page)
-            if not links:
-                raise UncertainDecision("There is no link on this page to open")
-            # Laya may refuse: the least-bad link is not the requested one.
-            links["none"] = Candidate("None of these is the requested link", {"type": "none"}, source="none")
-            chosen = self._target(goal, page, links, result)
+            chosen = nominated
+            if chosen is None:
+                links = link_options(page)
+                if not links:
+                    raise UncertainDecision("There is no link on this page to open")
+                links["none"] = Candidate("None of these is the requested link",
+                                          {"type": "none"}, source="none")
+                chosen = self._target(goal, page, links, result)
             if chosen.source == "none":
                 raise UncertainDecision("Which link should I open?")
             remaining[0].expected_url = chosen.action["url"]
@@ -206,7 +246,9 @@ class GoalEngine(LayaEngine):
         question = {"type": "choice", "instructions": {"goal": goal.text, "rules": rules},
                     "criteria": options}
         if not self._prefix_fits(question):
-            raise UncertainDecision("Question/goal exceeds checkpoint prefix budget; no silent truncation")
+            raise UncertainDecision(
+                f"Question/goal exceeds checkpoint prefix budget ({qid}, {len(options)} options); "
+                "no silent truncation")
         state = {
             "page": {"url": page.url[:180], "title": page.title[:100], "text": page.text[:1200]},
             "recent_actions": [

@@ -76,6 +76,26 @@ def test_typing_uses_real_text_input():
     assert ("Input.insertText", {"text": "hello"}) in cdp.calls
 
 
+def test_new_tab_opens_google_and_waits_for_the_new_target(monkeypatch):
+    from laya_voice_browser.browser import NEW_TAB_URL
+
+    class CreatingCDP(FakeCDP):
+        def call(self, method, params=None, **kwargs):
+            if method == "Target.createTarget":
+                self.calls.append((method, params))
+                return {"targetId": "T2"}
+            return super().call(method, params, **kwargs)
+
+    cdp = CreatingCDP()
+    browser = ChromiumBrowser(CHROME, connection=cdp)
+    activated, waited = [], []
+    monkeypatch.setattr(browser, "_activate", activated.append)
+    monkeypatch.setattr(browser, "_wait_loaded", lambda target, *args, **kw: waited.append(target))
+    browser.execute({"type": "new_tab"})
+    assert ("Target.createTarget", {"url": NEW_TAB_URL}) in cdp.calls
+    assert activated == ["T2"] and waited == ["T2"]
+
+
 def test_auto_follows_a_supported_default_browser(tmp_path, monkeypatch):
     monkeypatch.setattr(browsers, "app_path", lambda app: "/Applications/x.app")
     assert browsers.resolve("auto", "com.google.chrome") == "chrome"

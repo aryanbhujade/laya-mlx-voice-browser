@@ -70,6 +70,10 @@ class World:
     """Explicit synthetic browser transition model shared by both implementations."""
 
     def __init__(self, pages, start, Snapshot, Element, Tab):
+        from laya_voice_browser import browser
+
+        # Match the selected checkout's browser behavior; historical main opens about:blank.
+        self.new_tab_url = getattr(browser, "NEW_TAB_URL", "about:blank")
         self.pages = copy.deepcopy(pages)
         self.Snapshot, self.Element, self.Tab = Snapshot, Element, Tab
         self.tabs = {f"t{i}": {"urls": [url], "at": 0} for i, url in enumerate(start)}
@@ -154,7 +158,7 @@ class World:
         elif kind == "new_tab":
             self.current = f"t{self.next_tab}"
             self.next_tab += 1
-            self.tabs[self.current] = {"urls": ["about:blank"], "at": 0}
+            self.tabs[self.current] = {"urls": [self.new_tab_url], "at": 0}
         elif kind == "close_tab" and len(self.tabs) > 1:
             del self.tabs[self.current]
             self.current = next(reversed(self.tabs))
@@ -342,6 +346,8 @@ def main():
     parser.add_argument("--mode", required=True, choices=["legacy", "goal"])
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--group", action="append")
+    parser.add_argument("--extra-links", type=Path,
+                        help="Additional labelled fixture-based JSONL cases; scored as link_challenge")
     args = parser.parse_args()
     sys.path.insert(0, str(args.source.resolve() / "src"))
     if args.output.exists() and any(args.output.iterdir()):
@@ -361,11 +367,27 @@ def main():
         engine, controller_type = LayaEngine(), StreamingController
     engine.warm()
     pages, scenarios = cases()
+    if args.extra_links:
+        for index, line in enumerate(args.extra_links.read_text().splitlines()):
+            item = json.loads(line)
+            fixture = ROOT / "tests/fixtures" / f"{item['page']}.json"
+            raw = json.loads(fixture.read_text())
+            pages[raw["url"]] = raw
+            expected = ({"none": True} if item.get("none") else {"urls": [
+                e["href"] for e in raw["elements"] if e["id"] in item["targets"]]})
+            if not expected.get("none") and not expected["urls"]:
+                parser.error(f"Extra case {index} has no observed target")
+            scenarios.append(dict(name=f"link-challenge-{index}", group="link_challenge",
+                                  start=[raw["url"]], source="saved_real_page",
+                                  reverse_elements=item.get("reverse", False),
+                                  steps=[dict(text=item["transcript"], expected=expected)]))
     rows = []
     for case in scenarios:
         if args.group and case["group"] not in args.group:
             continue
         world = World(pages, case["start"], Snapshot, Element, Tab)
+        if case.get("reverse_elements"):
+            world.pages[case["start"][0]]["elements"].reverse()
         messages = []
         controller = controller_type(world, engine, announce=messages.append,
                                      trace_path=args.output / f"{case['name']}.jsonl")

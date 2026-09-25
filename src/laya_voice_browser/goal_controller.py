@@ -52,7 +52,8 @@ class GoalController(StreamingController):
             if self.goal:
                 self.goal.status = reason
                 self._cancelled_ids = (self._cancelled_ids + [self.goal.id])[-32:]
-        self._status("listening")
+        if self._enabled:
+            self._status("listening")
 
     def pause(self) -> None:
         self._enabled = False
@@ -125,6 +126,8 @@ class GoalController(StreamingController):
             self.browser.execute(action, expected_fingerprint=page.fingerprint)
             goal.history.append({"executed": action, "source": "universal"})
             goal.status = "direct_done"
+            self.announce(f"Universal action: {action} (0 model ms)")
+            self.announce("goal stopped: direct_done; 1 action")
             self._trace({"goal_id": goal.id, "execution": action, "source": "universal", "model_ms": 0,
                          "dispatch_ms": round((time.perf_counter() - started) * 1000, 2)})
         except BrowserSessionLost:
@@ -169,7 +172,7 @@ class GoalController(StreamingController):
         return page
 
     def _run_goal(self, generation: int, goal: Goal) -> None:
-        from .goal_contracts import awaiting_render
+        from .goal_contracts import awaiting_render, contract_options
 
         seen: set[str] = set()
         waits = 0
@@ -180,7 +183,13 @@ class GoalController(StreamingController):
                 self._status("thinking")
                 page = self.browser.snapshot()
                 blocker = browser_blocker(page)
-                if blocker:
+                tab_controls = {"switch_tab", "close_tab", "close_other_tabs", "new_tab"}
+                # A challenge blocks page automation, not a fresh request to leave/switch tabs.
+                allowed_on_blocker = (
+                    not blocker or (goal.contract and goal.contract.kind in tab_controls)
+                    or (not prepared and any(c.kind in tab_controls
+                                            for c in contract_options(goal, page).values())))
+                if blocker and not allowed_on_blocker:
                     goal.status = blocker
                     self.announce("Browser verification is required; the goal has not been completed")
                     break
@@ -202,6 +211,10 @@ class GoalController(StreamingController):
                     prepared = True
                     self._trace({"goal_id": goal.id, "interpretation": asdict(interpretation),
                                  "contract": asdict(goal.contract) if goal.contract else None})
+                if blocker and (not goal.contract or goal.contract.kind not in tab_controls):
+                    goal.status = blocker
+                    self.announce("Browser verification is required; page actions remain blocked")
+                    break
                 if self._verified(goal, page):
                     break
                 if len(goal.history) >= self.max_steps or goal.decisions >= MAX_DECISIONS:

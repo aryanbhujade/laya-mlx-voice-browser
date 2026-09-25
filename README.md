@@ -1,7 +1,7 @@
 # LayaBrowse
 
 **Browse the web by speaking to your Mac.** Double-tap a shortcut, say what you want, and LayaBrowse
-operates Safari or a Chromium browser using a small local decision model.
+uses a small local Laya model to choose browser actions, observe their results, and continue toward your goal.
 
 [![CI](https://github.com/aryanbhujade/laya-mlx-voice-browser/actions/workflows/ci.yml/badge.svg)](https://github.com/aryanbhujade/laya-mlx-voice-browser/actions/workflows/ci.yml)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
@@ -11,26 +11,27 @@ operates Safari or a Chromium browser using a small local decision model.
 
 ## Setup and architecture video
 
-A 2-minute walkthrough of installation, permissions, and how speech becomes browser actions.
-
-https://github.com/user-attachments/assets/913a7be7-f81f-42c9-9b73-106c7b9871b5
+[Watch the 1:35 setup and architecture walkthrough](https://github.com/aryanbhujade/laya-mlx-voice-browser/releases/download/v0.2.0/layabrowse-setup-goal-loop.mp4).
+This narrated, source-backed explainer shows the install steps and the default goal loop. Its code
+and architecture panels are rendered illustrations, not a filmed fresh installation or live voice demo.
 
 > **Early alpha:** LayaBrowse is a source-installed macOS project, not a notarized downloadable app yet.
 > Expect rough edges on websites that frequently change their interface.
 
-**Experimental branch:** `--goal-loop` runs a model-led observe → choose → act loop using a browser-trained
-Laya checkpoint. It is opt-in and is **not yet as reliable as the standard mode**. See
-[goal-loop setup, measurements and limitations](docs/GOAL_LOOP.md). Installing normally does not enable it.
+**Default engine:** Laya chooses a goal from supported outcomes, chooses an available browser action,
+observes the page, and stops only when the result is verified. `layabrowse install` installs this mode
+without flags. The older rules-first engine remains available with `layabrowse install --legacy`.
+See [goal-loop design and limits](docs/GOAL_LOOP.md).
 
 ```text
 double-tap Left Control → “open YouTube and search for ESP32 projects”
                          → “open the first video”
-                         → “make the video bigger”
+                         → “pause the video”
 ```
 
 Laya-MLX inference and action selection happen on your Mac. For locales supported by Apple's on-device
 recognizer, speech recognition stays on the Mac too. Laya is a classifier rather than a chatbot: it chooses from
-typed operations and visible page controls; it does not generate arbitrary code and execute it.
+typed goals and available browser controls; it does not generate arbitrary code and execute it.
 
 ## What you need
 
@@ -60,7 +61,7 @@ python -m pip install -e .
 layabrowse install
 ```
 
-The final command builds and signs the local menu-bar app, downloads the Laya weights (about 850 MB, once),
+The final command builds and signs the local menu-bar app, downloads the browser-trained Laya weights,
 starts LayaBrowse and adds it to your login items. Rerunning `layabrowse install` safely rebuilds and restarts it.
 
 When macOS asks, allow:
@@ -93,11 +94,11 @@ You should see `Installed: yes` and `Running: yes`. The L-with-a-spark icon appe
 ## Your first workflow
 
 1. Double-tap **Left Control**. The notch island opens and says **Listening**.
-2. Say: **“Open Wikipedia and search for Alan Turing.”**
-3. Say: **“Open the first result.”**
-4. Say: **“And in a new tab, open YouTube and search for Alan Turing documentaries.”**
-5. Say: **“Open the first video.”**
-6. Say: **“Make the video bigger.”**
+2. Say: **“Open YouTube and search for Alan Turing documentaries.”**
+3. Say: **“Open the first video.”**
+4. Say: **“Pause the video.”**
+5. Say: **“Open the comments.”**
+6. Say: **“In a new tab, search GitHub for ESP32.”**
 7. Double-tap **Left Control** again to stop listening.
 
 LayaBrowse stays in listening mode between commands. It does not stop after every sentence.
@@ -110,48 +111,31 @@ LayaBrowse stays in listening mode between commands. It does not stop after ever
 | Search | “search for Alan Turing”, “search YouTube for lo-fi beats” |
 | Chain actions | “open YouTube and search for bank robbery documentaries” |
 | Work in a new tab | “in a new tab, search for ESP32 projects” |
-| Click | “click View history”, “open the first result” |
-| Type | “type hello world into the search box”, “press Return” |
-| Scroll | “scroll down a little”, “scroll to the bottom” |
-| Navigate | “go back”, “go forward”, “reload” |
-| Manage tabs | “switch to the YouTube tab”, “tab three”, “close the other tabs” |
-| Control media | “pause”, “skip ahead 30 seconds”, “play at 1.5x”, “turn on captions” |
-| Resolve ambiguity | Say “one”, “two” or “the second one” when numbered badges appear |
-| Approve a guarded action | Say “confirm” or “cancel” |
+| Click/open | “open the first result”, “click the visible Electronics link” |
+| Scroll | “scroll down a little”, “scroll up” |
+| Navigate | “go back”, “go forward” |
+| Manage tabs | “open a new tab”, “switch to the YouTube tab”, “close the other tabs” |
+| YouTube Shorts | “pause”, “mute”, “open the comments”, “next short” |
 
-See the [command and workflow cookbook](docs/COMMANDS.md) for longer examples covering research, YouTube,
-GitHub, Gmail, shopping and media.
+See the [command and workflow cookbook](docs/COMMANDS.md) for supported examples and current limits.
 
-## Site-aware controls
+## Site-aware capabilities
 
-Site packs add fast, human phrasing for controls that are specific to a website. Current packs cover:
-
-| Site | Examples |
-|---|---|
-| YouTube | Theater mode, mini player, comments, first video, subscriptions, history, Watch Later |
-| Gmail | Compose, reply, reply all, forward, archive, delete, read/unread, inbox, sent, drafts, search mail |
-| GitHub | Repository code, issues, pull requests, Actions, releases, README, starring |
-| Google | First/second result, result pages, Images, Videos, News and Shopping |
-| Wikipedia | References, article beginning and a random article |
-| Spotify | Play/pause, next/previous, shuffle and repeat |
-| Netflix | Skip intro/recap/credits and next episode |
-| Amazon | First product, next page, cart, orders, deals, reviews, add to cart and Buy Now |
-| eBay | First listing, next page, cart, watchlist, watch item, add to cart and Buy It Now |
-| Etsy | First product, next page, cart, favorites, favorite item and add to cart |
-
-Account-changing and purchase actions are confirmation-gated. Site packs use visible labels and conservative
-selectors, but websites can redesign without notice. Contributors can add or repair packs without changing the
-model; see [Writing site packs](docs/SITE_PACKS.md).
+Goal mode uses site packs to expose observable search results, article/video/item detail pages, and
+safe navigation links. Its verified site-search goals currently cover Google, Wikipedia, YouTube,
+GitHub and eBay. eBay may show an automation challenge. YouTube's basic player and Shorts controls
+are available; site-specific controls from the older rules-first engine are **not** all available in
+goal mode yet. Sorting/filter menus, purchases, email composition and account changes are not supported
+goal outcomes. See [Writing site packs](docs/SITE_PACKS.md) to expand this safely.
 
 ## How it behaves
 
 - **Continuous session:** double-tap once to begin, speak multiple commands, double-tap again to stop.
-- **Streaming decisions:** closed commands such as “go back” can run before speech ends; searches, typing,
-  clicks and other payload-bearing commands wait for the phrase to finish.
-- **Page-aware targets:** visible links, buttons and fields are ranked by how well their labels match your words.
-- **Clarification instead of guessing:** ambiguous targets get numbered badges or a spoken clarification.
-- **Confirmation before consequences:** purchases, deletion, sending, sign-in/out, voting and similar actions
-  stop and ask for “confirm”.
+- **Goal loop:** after a final phrase, Laya chooses an outcome and a compatible next action; the browser
+  result is observed before the loop continues or claims completion.
+- **Fast universal controls:** exact back, forward and scroll commands skip the model, after the phrase ends.
+- **Clarification instead of guessing:** uncertain or unsupported requests stop without an action.
+- **Consequential actions:** purchases, deletion, sending and account changes are unavailable in goal mode.
 - **Stale-page protection:** an action is discarded if the page changes before it can be executed.
 
 ## Browser sessions and accounts
@@ -181,8 +165,8 @@ Everything is available from the menu-bar icon:
 | Sounds | Start/stop chime |
 | Show Notch Island | Visual listening/action status |
 
-Automatic search uses Google in Chromium and DuckDuckGo in Safari, because Google's automated-traffic check
-cannot be completed inside Safari's locked automation window.
+Goal-mode web search uses Google, including from a new tab. Google's automated-traffic check can block
+Safari automation; LayaBrowse reports the block rather than bypassing it.
 
 ## Common problems
 
@@ -195,8 +179,9 @@ cannot be completed inside Safari's locked automation window.
 | Safari will not open or timeouts | Enable **Develop → Allow Remote Automation**. If an automation session was stopped, quit Safari fully and try again. |
 | Safari is signed out | This is a SafariDriver limitation. Choose Chrome/Edge/Brave and sign into the persistent LayaBrowse profile once. |
 | Chromium opened a new profile | Expected. LayaBrowse uses its own persistent automation profile rather than your personal profile. |
-| Google shows “unusual traffic” | Solve it manually in Chromium. Safari automatically falls back to DuckDuckGo because its automation window cannot solve the check. |
-| A site-specific command stopped working | The website likely changed its labels or markup. Open an issue with the site, command and visible control—but redact personal data. |
+| Google shows “unusual traffic” | Solve it manually in Chromium, or try later. Safari goal mode does not bypass the check or claim the search succeeded. |
+| It responds again only after toggling listening | Capture `layabrowse logs -n 100` and note the time. Re-toggling can recreate a stopped browser session; this recovery path is being investigated. |
+| A site-specific command stopped working | The website may have changed or the goal may be unsupported. Check the log's `goal stopped` reason; redact personal data before opening an issue. |
 | First installation is slow | The Laya weights are downloading once. Rerun `layabrowse install` if the download was interrupted. |
 
 More detail and recovery commands are in [Troubleshooting](docs/TROUBLESHOOTING.md).
@@ -238,8 +223,8 @@ layabrowse logs -n 100
 layabrowse uninstall
 ```
 
-Choosing **Quit LayaBrowse** stops the current login session cleanly. Run `layabrowse install --skip-model` to
-start it again without rechecking the model download.
+Choosing **Quit LayaBrowse** stops the current login session cleanly. Run `layabrowse install` to
+start it again; cached model weights are reused.
 
 ## Development and contributing
 
@@ -255,39 +240,15 @@ The unit tests require no model, browser, microphone or network. See [CONTRIBUTI
 site-pack workflow, test expectations and pull-request checklist. Architecture details are in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## Performance
+## Performance and evidence
 
-Measured on an Apple M4 Pro (24 GB):
-
-| Measurement | Result |
-|---|---:|
-| Built-in command decision | 0 ms model time |
-| Streaming decision | 18 ms median |
-| Page-target decision | 50 ms median |
-| Free-form request | 76 ms median |
-| Click-target accuracy on 27 commands / 5 saved real pages | 96% |
-| Site-control routing on the included 43-row suite | 100%, 0 executed false actions |
-
-Those two accuracies are the whole pipeline's, not the model's. Grammar, site-pack rules and lexical
-ranking settle most decisions before Laya is asked anything, so `scripts/measure_model_contribution.py`
-reports each benchmark twice — rules alone, then with the model:
-
-| Benchmark | Rules only | With Laya |
-|---|---:|---:|
-| Intent (26 spoken commands) | 92.3% | 84.6% |
-| Site controls (43 rows) | 95.3% | 100% |
-| Click targets (27 commands) | 96.3% | 96.3% |
-
-Laya currently earns its place on loose site phrasings ("move this out of my inbox without erasing it"
-→ archive) and on rejecting speech that is not a command. It does not pick click targets — lexical
-ranking does, and the raw target head scores near chance on nine options. Treat these as small
-development measurements on manually authored sets, not a benchmark; `docs/BASELINE.md` records the
-raw per-head accuracies that led to this split of work.
-| Startup after model download | About 1 second |
-| Idle memory | About 0.9 GB, including 843 MB model weights |
-
-These are small development measurements, not universal guarantees. Hardware, speech locale, page layout and
-browser loading time all matter. Reproduce them with the scripts in `scripts/`.
+Exact back/forward/scroll requests take **zero model passes**. In a development Safari Shorts session,
+Laya's decision passes for pause, mute, comments and next Short took 45–54 ms each; page execution and
+loading take additional time. The local model is not the speech recognizer, and these figures are not
+speech-to-visible-result latency. The full test suite and reproducible development journeys are in
+`tests/` and `scripts/`; [goal-loop measurements and limitations](docs/GOAL_LOOP.md) distinguish
+typed-command checks from microphone-driven use. Browser challenges, misheard speech and ambiguous
+links still cause real failures.
 
 ## License and acknowledgements
 

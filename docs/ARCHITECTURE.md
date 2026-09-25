@@ -1,57 +1,56 @@
 # How LayaBrowse works
 
 ```text
-LayaBrowse.app (Swift)                       Python backend (child process)               browser
-shortcut → mic → Apple Speech partials ─────▶ rules + Laya decisions → policy ──────────▶ Safari (WebDriver)
-notch island, menu, settings  ◀── status ──── controller, safety checks                    or Chromium (DevTools)
+double-tap → Apple Speech final transcript → proposed outcomes → Laya selects a goal
+                                                          ↓
+SafariDriver or Chromium ← execute compatible action ← Laya selects next action
+          ↓                                               ↑
+   observe fresh page → verify goal / update action history ──┘
 ```
+
+The default is the goal loop, not the older rules-first command pipeline. Laya is a local classifier:
+each question presents fixed choices, such as a requested outcome, operation or observed target. It
+does not write arbitrary code or browse without tools. The Python controller dispatches the selected
+typed action only after scope, confidence, safety and stale-page checks.
 
 ## Processes
 
-- **`native/Laya/`** — the menu-bar app. launchd starts it at login (`layabrowse install` writes the
-  LaunchAgent); it runs `python -m laya_voice_browser backend` as its child, so macOS attributes permissions
-  and background activity to LayaBrowse. Transcripts go to the backend's stdin as JSON lines; the backend
-  writes island statuses (`{"state": ...}`) and end-of-phrase hints (`{"endpoint": ...}`) to stdout.
-- **`backend.py`** — reads transcripts, runs the controller, and opens the browser chosen in settings.
-- **`controller.py`** — debounces partial transcripts, discards stale results, runs command chains, handles
-  "confirm"/"cancel" and numbered choices, and records traces.
+- The Swift `LayaBrowse.app` owns the global shortcut, microphone, Apple Speech recognition, menu-bar
+  status and notch island. `layabrowse install` registers it as a user LaunchAgent.
+- `backend.py` runs as the app's Python child and forwards transcripts and status. It opens the browser
+  chosen in settings, lazily on the first listening session.
+- `goal_controller.py` serializes browser access, invalidates stale decisions when new speech arrives,
+  and runs the bounded observe–choose–act–observe loop. It starts paused after a backend restart until
+  a fresh listening-on signal arrives.
+- `goal_engine.py` presents Laya with available goal and action choices. `goal_contracts.py` proposes
+  finite outcomes and verifies them; `goals.py` builds compatible actions from the current page.
+- `page.py` extracts visible elements and site-pack evidence. `safari.py` uses SafariDriver's separate,
+  signed-out automation session. `chromium.py` uses a persistent dedicated Chromium profile.
 
-## Deciding what to do
+## What the model decides
 
-Laya answers one multiple-choice question per model pass, over at most 512 tokens of
-`[question + options] + state`, so latency grows with the number of questions (~20–60 ms each).
+The transcript can provide literal arguments—site, search text, a spoken result number—but it does not
+dispatch an action. Laya selects the requested outcome or `unsupported`. For a chosen goal, the next
+question offers only actions compatible with that goal and observed browser state. After execution,
+the controller observes again, checks the requested outcome, and either stops or chooses another action.
+For a YouTube Short, for example, the site pack exposes player state and controls; Laya can choose
+pause or comments, while the verifier checks `paused` or visible comments afterward.
 
-1. **Grammar first** (`spans.py`). Explicit commands are settled by rules; "go back", "go forward", "reload" and
-   "new tab" run mid-speech with no model call. The speaking style decides whether polite requests ("could you
-   please…") count as explicit.
-2. **Site packs** (`sites/`) match site-specific explicit phrases and clear natural examples before the model.
-   When rules are insufficient, only relevant controls become a short Laya choice. A pack never
-   redefines a universal command — "go back" is browser history on every site, not Google's previous
-   page of results — but it may implement one better, as Spotify does for "pause". See
-   [Writing site packs](SITE_PACKS.md).
-3. **Stage 1** asks only the unsettled of `is_command`, `intent` and `complete`, over a slim state (transcript,
-   page, four most relevant elements, recent actions).
-4. **Stage 2** asks only what the intent needs, and only once the policy would act: `target` and
-   `destructive` for clicks, `text_span` for searches, `url_span`/`site` when no site was named.
-5. **Targets.** Elements are ranked by word overlap with the transcript; a unique best label match is used
-   directly, and ties go to Laya's `target` question over at most nine `"label (role)"` options. If it is
-   still unclear, numbered badges appear on the page.
-6. **Policy** (`policy.py`, `safety.py`) applies confidence, completeness and payload gates, and requires a
-   spoken "confirm" for destructive or account-changing actions.
+Exact back/forward/scroll commands have a narrow, zero-model fast path. They run only after a final
+transcript. They are a deliberate latency exception, not the general decision architecture.
 
-State is ordered by usefulness and trimmed to fit each question's token budget instead of being cut silently.
+## Completion and boundaries
 
-## Browsers
+An action returning successfully does not prove the user's goal is done. Search requires rendered
+results, an opened result requires the observed result destination, tabs require the intended tab
+identity/count, and media actions require the observed player state or destination. An ambiguous choice,
+browser challenge, stale page, unsupported goal or exhausted action budget stops without a success claim.
+Verification can prove that a chosen outcome happened, but not that Laya interpreted the original
+utterance correctly; link-choice errors and speech-recognition mistakes remain possible.
 
-- **`safari.py`** — SafariDriver automation windows.
-- **`chromium.py`** — the Chrome DevTools Protocol, on a dedicated profile, with trusted mouse and keyboard
-  input.
-- **`page.py`** — the page snapshot script shared by both, and the rule that an action stays valid while the URL
-  and its target element are unchanged.
-- **`browsers.py`** — resolves "Automatic" to the macOS default browser.
+Goal mode intentionally omits consequential account and shopping actions, arbitrary form workflows,
+filter/sort controls and much of the legacy site-pack command inventory. Those need explicit capabilities,
+observations and end-state verification before they should be promoted. The older controller remains
+available with `layabrowse install --legacy` for local fallback; it is not the default release path.
 
-## End of phrase
-
-`native/Laya/Endpointer.swift` learns the speaker's gaps between words (a running mean and spread), waits
-longer after connecting words, shortens once the backend reports the command complete, and becomes more
-patient when the speaker resumes right after a phrase was ended.
+See [goal-loop design and test evidence](GOAL_LOOP.md) and [site-pack observations](SITE_PACKS.md).

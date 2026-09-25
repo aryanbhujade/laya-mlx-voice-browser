@@ -24,7 +24,9 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--url", help="Open this page first")
     result.add_argument("--browser", help="safari, chrome, edge, … (default: the Browser setting)")
     result.add_argument("--model", help="Local path or Hugging Face Laya-MLX checkpoint")
-    result.add_argument("--goal-loop", action="store_true", help="Experimental model-led browsing goals")
+    engine_mode = result.add_mutually_exclusive_group()
+    engine_mode.add_argument("--goal-loop", action="store_true", help="Model-led browsing (the default)")
+    engine_mode.add_argument("--legacy", action="store_true", help="Use the previous rules-first engine")
     result.add_argument("--trace", type=Path, help="Append inspectable JSONL decisions and outcomes")
     result.add_argument("--keep-open", action="store_true", help="Leave the browser window open afterwards")
     modes = result.add_mutually_exclusive_group()
@@ -46,19 +48,26 @@ def service_main(command: str, rest: list[str]) -> int:
 
         options.add_argument("--model")
         options.add_argument("--trace", type=Path)
-        options.add_argument("--goal-loop", action="store_true")
+        engine_mode = options.add_mutually_exclusive_group()
+        engine_mode.add_argument("--goal-loop", action="store_true")
+        engine_mode.add_argument("--legacy", action="store_true")
         args = options.parse_args(rest)
-        return backend.run(args.model, args.trace, goal_loop=args.goal_loop)
+        return backend.run(args.model, args.trace, goal_loop=not args.legacy)
     if command == "daemon":
         options.add_argument("--model")
         options.add_argument("--trace", type=Path)
-        options.add_argument("--goal-loop", action="store_true")
+        engine_mode = options.add_mutually_exclusive_group()
+        engine_mode.add_argument("--goal-loop", action="store_true")
+        engine_mode.add_argument("--legacy", action="store_true")
         args = options.parse_args(rest)
-        return daemon.run(args.model, args.trace, goal_loop=args.goal_loop)
+        return daemon.run(args.model, args.trace, goal_loop=not args.legacy)
     if command == "install":
         options.add_argument("--skip-model", action="store_true", help="Do not download the model now")
+        engine_mode = options.add_mutually_exclusive_group()
+        engine_mode.add_argument("--goal-loop", action="store_true", help="Model-led mode (the default)")
+        engine_mode.add_argument("--legacy", action="store_true", help="Install the old rules-first engine")
         args = options.parse_args(rest)
-        return service.install(prepare_model=not args.skip_model)
+        return service.install(prepare_model=not args.skip_model, goal_loop=not args.legacy)
     if command == "logs":
         options.add_argument("-n", type=int, default=40, help="Number of lines")
         return service.logs(options.parse_args(rest).n)
@@ -79,12 +88,13 @@ def main(argv: list[str] | None = None) -> int:
     if argv and argv[0] in SERVICE_COMMANDS:
         return service_main(argv[0], argv[1:])
     args = parser().parse_args(argv)
+    goal_loop = not args.legacy
     print("Warming Laya-MLX locally…", flush=True)
-    if args.goal_loop:
+    if goal_loop:
         from .goal_controller import GoalController
         from .goal_engine import GoalEngine
 
-    engine = GoalEngine(args.model) if args.goal_loop else LayaEngine(args.model)
+    engine = GoalEngine(args.model) if goal_loop else LayaEngine(args.model)
     try:
         engine.warm()
     except Exception as exc:
@@ -100,25 +110,27 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     status = StatusChannel(free_udp_port())
-    controller_type = GoalController if args.goal_loop else StreamingController
+    controller_type = GoalController if goal_loop else StreamingController
     controller = controller_type(browser, engine, trace_path=args.trace, status=status)
     try:
         if args.command:
             controller.submit(TranscriptEvent(args.command, True, "typed", time.time()))
             controller.wait_idle(timeout=60)
-            return _result_code(controller, args.goal_loop)
+            return _result_code(controller, goal_loop)
         if args.replay:
             for event in replay_events([args.replay], word_delay=args.word_delay):
                 controller.submit(event)
             controller.wait_idle(timeout=60)
-            return _result_code(controller, args.goal_loop)
+            return _result_code(controller, goal_loop)
 
         print("Ready. Double-tap left Control to speak; press Control-C to stop.", flush=True)
+        if goal_loop:
+            controller.pause()
         def on_signal(name):
-            if args.goal_loop and name in {"voice_on", "voice_off"}:
+            if goal_loop and name in {"voice_on", "voice_off"}:
                 controller.resume() if name == "voice_on" else controller.pause()
 
-        for event in native_events(status_port=status.port, on_signal=on_signal):
+        for event in native_events(status_port=status.port, on_signal=on_signal, goal_loop=goal_loop):
             controller.submit(event)
             if controller.session_lost:
                 return 3

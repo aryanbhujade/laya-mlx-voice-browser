@@ -111,8 +111,9 @@ Chromium browser for persistent accounts.
 
 ### Google shows an automated-traffic check in Safari
 
-That check cannot be completed inside Safari's locked automation window. LayaBrowse defaults to DuckDuckGo for
-plain Safari searches and falls back there when Google blocks a requested search. It never bypasses the check.
+That check cannot be completed inside Safari's locked automation window. Default goal mode reports the
+search as blocked; it does not switch engines silently, bypass the check, or claim success. You can
+try Chromium's dedicated persistent profile or retry later.
 
 ## Chromium browsers
 
@@ -135,15 +136,16 @@ locations. Open an issue with the browser name and application path if a standar
 
 ### LayaBrowse waits instead of acting
 
-This is normally a safety decision: the sentence may be incomplete, not addressed to the browser, or the page
-target may be ambiguous. Finish the sentence, use a more direct verb/label, or answer a numbered choice.
+The phrase may be incomplete, unsupported in goal mode, misrecognized, blocked by the site, or ambiguous
+among visible targets. Check `layabrowse logs -n 100` and look for the final transcript and `goal stopped`
+reason. Rephrase with the visible link label if appropriate; redact page text and URLs before sharing logs.
 
 Examples:
 
 ```text
 “Click the Issues tab.”
 “Open the first video.”
-“Type Alan Turing into the search box.”
+“Search Wikipedia for Alan Turing.”
 ```
 
 ### It chose the wrong visible element

@@ -68,6 +68,23 @@ if (pack) {
   browsing = {site: pack.site, heading: heading ? heading.textContent.trim().slice(0, 200) : '', results, navigation,
     results_ready: [...document.querySelectorAll(pack.results_selector)].some(rendered),
     detail_ready: [...document.querySelectorAll(pack.detail_selector)].some(rendered)};
+  if (pack.media_controls) {
+    const media = [...document.querySelectorAll('video, audio')]
+      .filter((el) => el.getClientRects().length)
+      .sort((a, b) => Number(a.paused) - Number(b.paused))[0];
+    const shorts = location.pathname.startsWith('/shorts/');
+    const comments = document.querySelector('ytd-comments#comments, ytd-comments');
+    const commentRect = comments?.getBoundingClientRect();
+    const panel = document.querySelector(
+      'ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-comments-section"]');
+    browsing.media = {present: Boolean(media), paused: media ? Boolean(media.paused) : null,
+      muted: media ? Boolean(media.muted) : null};
+    browsing.comments_visible = Boolean(
+      (!shorts && commentRect && commentRect.width > 0 &&
+       commentRect.top < innerHeight && commentRect.bottom > 0)
+      || (shorts && panel && panel.getClientRects().length &&
+          panel.getAttribute('visibility') === 'ENGAGEMENT_PANEL_VISIBILITY_EXPANDED'));
+  }
 }
 return {
   url: location.href,
@@ -134,7 +151,8 @@ if (command === 'skip_ad') {
 }
 if (command === 'next' || command === 'previous') {
   const down = command === 'next';
-  if (shorts && tag(down ? '#navigation-button-down button' : '#navigation-button-up button')) {
+  if (shorts && tag(down ? 'button[aria-label="Next video"]' : 'button[aria-label="Previous video"]',
+                    down ? '#navigation-button-down button' : '#navigation-button-up button')) {
     return done(down ? 'next short' : 'previous short');
   }
   if (youtube && down && tag('.ytp-next-button', 'ytd-compact-video-renderer a#thumbnail',
@@ -149,6 +167,16 @@ if (command === 'next' || command === 'previous') {
   if (!pick) return null;
   pick[0].scrollIntoView({block: 'center', behavior: 'smooth'});
   return done(down ? 'next video' : 'previous video');
+}
+if (command === 'comments' && youtube) {
+  if (shorts && tag('button[aria-label^="View "][aria-label$=" comments"]',
+                    'ytd-reel-video-renderer #comments-button button',
+                    'ytd-shorts #comments-button button',
+                    'button[aria-label="Comments"]')) return done('comments opened');
+  if (shorts) return null;
+  const comments = document.querySelector('ytd-comments#comments, ytd-comments, #comments');
+  if (comments) { comments.scrollIntoView({block: 'start'}); return done('comments shown'); }
+  return null;
 }
 if (command === 'fullscreen') {
   if (youtube && !document.fullscreenElement && tag('.ytp-fullscreen-button')) return done('full screen');

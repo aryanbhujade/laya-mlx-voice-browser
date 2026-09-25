@@ -5,7 +5,7 @@ import threading
 import time
 from typing import Any
 
-from .browser import BrowserSessionLost, NoMedia, StalePage, Unavailable, pick_tab
+from .browser import NEW_TAB_URL, BrowserSessionLost, NoMedia, StalePage, Unavailable, pick_tab
 from .page import (
     CANDIDATES_JS,
     FOCUS_FIELD_JS,
@@ -68,6 +68,7 @@ class SafariBrowser:
         self._last_snapshot: Snapshot | None = None
         # WebDriver can only read the current tab's title, so remember each tab's as it is visited.
         self._tab_titles: dict[str, tuple[str, str]] = {}
+        self._tab_order = list(self.driver.window_handles)
 
     def close(self) -> None:
         if self.driver is not None:
@@ -165,8 +166,15 @@ class SafariBrowser:
         self._tab_titles[current] = (str(raw.get("title", "")), str(raw.get("url", "")))
         return tuple(
             Tab(handle, *self._tab_titles.get(handle, ("", "")), active=handle == current)
-            for handle in self.driver.window_handles
+            for handle in self._handles()
         )
+
+    def _handles(self) -> list[str]:
+        # SafariDriver can return newest-first handles. Keep tab positions stable across snapshots.
+        handles = self.driver.window_handles
+        self._tab_order = [h for h in self._tab_order if h in handles]
+        self._tab_order.extend(h for h in handles if h not in self._tab_order)
+        return list(self._tab_order)
 
     def _element(self, element_id: str):
         from selenium.webdriver.common.by import By
@@ -270,8 +278,9 @@ class SafariBrowser:
             self._site(action)
         elif kind == "new_tab":
             self.driver.switch_to.new_window("tab")
+            self.driver.get(NEW_TAB_URL)
         elif kind == "close_tab":
-            handles = self.driver.window_handles
+            handles = self._handles()
             if len(handles) <= 1:
                 raise RuntimeError("Refusing to close Safari's only controlled tab")
             current = self.driver.current_window_handle
@@ -290,7 +299,7 @@ class SafariBrowser:
                     self._tab_titles.pop(handle, None)
             self.driver.switch_to.window(current)
         elif kind == "switch_tab":
-            handles = self.driver.window_handles
+            handles = self._handles()
             current = self.driver.current_window_handle
             self.driver.switch_to.window(pick_tab(handles, current, {"direction": "next", **action}))
         elif kind == "select":

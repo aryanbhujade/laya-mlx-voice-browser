@@ -1,9 +1,11 @@
 # Writing site packs
 
-Site packs describe small, stable controls that are meaningful only on a particular website. They are plain
-JSON files in `src/laya_voice_browser/sites/`; no model training is required.
+Site packs are JSON files in `src/laya_voice_browser/sites/`. The default goal engine reads their
+`browsing` observations, safe `navigation` destinations and `media_controls` choices. The older
+`actions` phrase mappings below are for `layabrowse install --legacy` and are **not** automatically
+available in the default goal loop. No model training is needed to add a bounded capability.
 
-## How matching works
+## Legacy phrase matching
 
 1. `say` patterns are anchored regular expressions for explicit phrases.
 2. `terms` are natural examples used for exact and clear lexical matches.
@@ -97,10 +99,10 @@ Open templates support:
   results the control is absent and "scroll down" is an ordinary scroll. Entries are plain prefixes
   anchored with `^`, so a pack can be read without evaluating a regular expression.
 
-## Goal-loop probe (`browsing`)
+## Default goal-loop observations (`browsing`)
 
-Experimental goal mode reads an optional `browsing` block to verify that a requested outcome actually
-happened. It adds no phrases and selects nothing; it only tells the observer where the evidence is.
+Goal mode reads a `browsing` block to verify that a requested outcome actually happened. These
+selectors expose facts to Laya and the verifier; they do not execute a browser action by themselves.
 
 ```json
 "browsing": {

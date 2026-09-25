@@ -57,6 +57,7 @@ def native_events(
     *,
     status_port: int | None = None,
     on_signal: Callable[[str], None] | None = None,
+    goal_loop: bool = False,
 ) -> Iterator[TranscriptEvent]:
     """Transcripts from the LayaBrowse app; `on_signal` receives events such as "voice_on"."""
     root = root or project_root()
@@ -84,6 +85,8 @@ def native_events(
         command.extend(["--env", f"LAYA_STATUS_PORT={status_port}"])
     command.extend(["--env", f"LAYA_PARENT_PID={os.getpid()}"])
     command.append(str(app))
+    if not goal_loop:
+        command.extend(["--args", "--legacy"])
     process = subprocess.Popen(
         command,
         cwd=root,

@@ -163,7 +163,8 @@ def test_done_on_unsubmitted_query_never_reports_success():
     ("go back", "back"), ("go forward", "forward"),
 ])
 def test_universal_controls_skip_model_and_settling(text, kind):
-    c = GoalController(Browser(), Engine(), announce=lambda _: None)
+    messages = []
+    c = GoalController(Browser(), Engine(), announce=messages.append)
     c._observe_settled = lambda *args: pytest.fail("Direct command used the settling loop")
     try:
         c.submit(event(text, final=False))
@@ -173,6 +174,8 @@ def test_universal_controls_skip_model_and_settling(text, kind):
         c.wait_idle()
         assert c.goal.status == "direct_done" and not c.engine.seen
         assert [a["type"] for a in c.browser.executed] == [kind]
+        assert any("Universal action:" in message for message in messages)
+        assert "goal stopped: direct_done; 1 action" in messages
         c.submit(event(text))
         c.wait_idle()
         assert len(c.browser.executed) == 1
@@ -352,7 +355,7 @@ def test_known_search_skeleton_waits_but_unsubmitted_query_is_still_actionable()
 
 def test_named_tab_reference_is_not_mistaken_for_opening_a_website():
     page = replace(BLANK, tabs=(Tab("a", "YouTube", "", True), Tab("b", "GitHub", "", False)))
-    engine = RecordingGoalEngine({"objective": "switch_tab", "objective_tab": "b",
+    engine = RecordingGoalEngine({"objective": "switch_tab", "objective_tab": "tab:2",
                                   "operation": "CLICK", "target": "browser:switch_tab"})
     goal = Goal("g", "switch to the GitHub tab")
     engine.prepare(goal, page)

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "laya-mlx-voice-browser"
-version = "0.1.0"
+version = "0.2.0"
 description = "LayaBrowse: voice-control Safari or Chromium browsers with local Laya-MLX decisions on Apple silicon"
 readme = "README.md"
 requires-python = ">=3.11"

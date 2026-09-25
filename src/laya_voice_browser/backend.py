@@ -75,7 +75,7 @@ def run(model: str | None = None, trace: Path | None = None, *, goal_loop: bool 
     _trim_log()
     os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
     warnings.filterwarnings("ignore", message=".*temperatures outside.*")
-    log("backend starting")
+    log(f"backend starting: {'Laya goal loop' if goal_loop else 'legacy rules-first'}")
     if goal_loop:
         from .goal_controller import GoalController
         from .goal_engine import GoalEngine
@@ -91,6 +91,9 @@ def run(model: str | None = None, trace: Path | None = None, *, goal_loop: bool 
     status = PipeStatus(status_stream)
     controller_type = GoalController if goal_loop else StreamingController
     controller = controller_type(browser, engine, trace_path=trace, status=status, announce=log)
+    if goal_loop:
+        # Only a fresh voice_on may authorize speech after startup or a backend restart.
+        controller.pause()
     try:
         for line in sys.stdin:
             try:

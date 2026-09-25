@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote_plus, urlparse
 
+from .browser import NEW_TAB_URL
 from .questions import SITE_HOME, SITE_SEARCH
 from .safety import deterministic_destructive, side_effect_link
 from .spans import as_https, site_for_url, url_candidates
@@ -76,9 +77,37 @@ def scope(url: str) -> str | None:
     from .sites import pack_for
 
     pack = pack_for(url)
-    if pack and pack.browsing.get("site") == "ebay":
-        return "ebay"
+    if pack and pack.browsing.get("site"):
+        return pack.browsing["site"]
     return site_for_url(url)
+
+
+def tab_candidates(page: Snapshot) -> dict[str, Candidate]:
+    """Position-labelled choices; opaque browser handles stay in tool arguments, not prompts."""
+    current = next((i for i, tab in enumerate(page.tabs) if tab.active), None)
+    choices = {}
+    for i, tab in enumerate(page.tabs):
+        if tab.active:
+            continue
+        positions = []
+        if i == 0:
+            positions.append("first")
+        if i == len(page.tabs) - 1:
+            positions.append("last")
+        if current is not None and len(page.tabs) > 1:
+            if i == (current - 1) % len(page.tabs):
+                positions.append("previous")
+            if i == (current + 1) % len(page.tabs):
+                positions.append("next")
+        title = " ".join(tab.title.split())
+        if len(title) > 36:
+            title = title[:18] + "…" + title[-14:]
+        host = (urlparse(tab.url).hostname or "")[:32]
+        identity = " — ".join(part for part in (host, title) if part) or "Untitled / blank"
+        choices[f"tab:{i + 1}"] = Candidate(
+            f"Tab {i + 1} ({', '.join(positions)}): {identity}",
+            {"type": "switch_tab", "tab_id": tab.id}, source="browser")
+    return choices
 
 
 def literal_spans(text: str) -> list[str]:
@@ -154,6 +183,13 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
             t.active and t.id not in goal.contract.initial_tabs for t in page.tabs):
         return {"CLICK": {"browser:new_tab": Candidate(
             "Open the requested new tab before navigating", {"type": "new_tab"}, source="browser")}}
+    if goal.contract and goal.contract.kind == "new_tab" and any(
+            t.active and t.id not in goal.contract.initial_tabs for t in page.tabs):
+        # The tab already exists. Repair an empty/failed start page, never create another tab.
+        if scope(page.url) != "google":
+            return {"CLICK": {"browser:start_page": Candidate(
+                "Load Google in the new tab", {"type": "navigate", "url": NEW_TAB_URL}, source="browser")}}
+        return {}
     # The outcome's ordinal is an argument selected/accepted by Laya, not a fresh ranking problem.
     # Once search is verified, bind it to that observed result; unrelated results and retyping
     # cannot satisfy the remaining work. Laya still chooses CLICK / WAIT / BLOCKED.
@@ -169,6 +205,13 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
         return {"CLICK": {"link": Candidate(
             goal.contract.label(), {"type": "navigate", "url": goal.contract.expected_url},
             source="capability")}}
+    media_commands = {"pause_video": "pause", "play_video": "play", "mute_video": "mute",
+                      "unmute_video": "unmute", "next_video": "next", "previous_video": "previous",
+                      "show_comments": "comments"}
+    if goal.contract and goal.contract.kind in media_commands:
+        command = media_commands[goal.contract.kind]
+        return {"CLICK": {f"media:{command}": Candidate(
+            goal.contract.label(), {"type": "media", "command": command}, source="capability")}}
     # A model-selected primitive outcome only admits compatible tools. Do not ask a second
     # question to choose between closing a tab, clicking a video and going back.
     if goal.contract and not goal.contract.site:
@@ -178,7 +221,8 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
         action = {"type": kind}
         if kind == "switch_tab":
             action["tab_id"] = goal.contract.target_tab
-        available = (kind == "new_tab" or (kind == "close_tab" and len(page.tabs) > 1)
+        available = (kind == "new_tab" or (kind in {"close_tab", "close_other_tabs"}
+                                           and len(page.tabs) > 1)
                      or (kind == "switch_tab" and any(t.id == goal.contract.target_tab for t in page.tabs)))
         return {"CLICK": {f"browser:{kind}": Candidate(
             goal.contract.label(), action, source="browser")}} if available else {}
@@ -218,10 +262,7 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
     if len(page.tabs) > 1:
         clicks["browser:close_tab"] = Candidate("Browser: close current tab", {
             "type": "close_tab"}, source="browser")
-    for tab in page.tabs:
-        if not tab.active:
-            clicks[f"tab:{tab.id}"] = Candidate(f"Browser: switch to {tab.title[:40]}", {
-                "type": "switch_tab", "tab_id": tab.id}, source="browser")
+    clicks.update(tab_candidates(page))
     if spans:
         sites = [goal.contract.site] if goal.contract else [scope(page.url), *named, "google"]
         for name in dict.fromkeys(sites):
@@ -239,6 +280,20 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
             clicks[f"result:{index}"] = Candidate(
                 f"{scope(page.url)}: open result {index}: {item['title'][:55]}",
                 {"type": "navigate", "url": item["url"]}, source="capability")
+    if (goal.contract and goal.contract.kind in {"search", "open_result"}
+            and not goal.contract.search_observed):
+        # Once Laya selected a scoped search outcome, unrelated page links/tabs cannot fulfil it.
+        # In particular, a new Google tab must not receive a query meant for GitHub/YouTube.
+        same_site = scope(page.url) == goal.contract.site
+        submit_ids = {e.id for e in page.elements if same_site and e.role == "button"
+                      and re.fullmatch(r"(?:google )?search(?: wikipedia| github| youtube)?|go",
+                                       e.text.strip(), re.I)}
+        clicks = {key: c for key, c in clicks.items()
+                  if key == f"search:{goal.contract.site}" or key in submit_ids}
+        # The search capability already opens its site. Offering the homepage as a redundant
+        # route split confidence between two valid plans without providing another capability.
+        if not same_site:
+            fields = {}
     groups = {"CLICK": clicks}
     if fields and spans:
         groups["TYPE_TEXT"] = fields
@@ -282,6 +337,9 @@ def evidence(candidate: Candidate, action: dict, before: Snapshot, after: Snapsh
         observed = len(after.tabs) > len(before.tabs)
     elif action["type"] == "close_tab":
         observed = len(after.tabs) < len(before.tabs)
+    elif action["type"] == "close_other_tabs":
+        active = next((t.id for t in before.tabs if t.active), None)
+        observed = len(before.tabs) > 1 and len(after.tabs) == 1 and after.tabs[0].id == active
     else:
         observed = page_identity(before) != page_identity(after)
     return {"action": candidate.label, "kind": candidate.kind, "text": action.get("text"),
