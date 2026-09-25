@@ -13,7 +13,9 @@ zero-model shortcuts. Search, link and media decisions still use Laya.
 This is a **source-install alpha**, not a redistributable or notarized `.app`. The native app is built
 and signed locally by `layabrowse install` because it depends on the local Python environment and
 model cache. The GitHub release's automatically generated source archives are the release files;
-follow the [README](README.md) to install. An MP4 setup/architecture explainer is attached separately.
+follow the [README](README.md) to install. A setup/architecture explainer and a Safari browser demo
+are attached separately. The browser demo shows real verified actions from **typed** commands; its
+generated voice overlay is illustrative, not evidence of live speech recognition.
 
 Known limits: the SafariDriver session is separate from ordinary signed-in Safari tabs; Google and
 eBay can present automation challenges; speech recognition can mishear commands; ambiguous links
