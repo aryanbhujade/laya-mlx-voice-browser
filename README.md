@@ -15,10 +15,6 @@ uses a small local Laya model to choose browser actions, observe their results, 
 This narrated, source-backed explainer shows the install steps and the default goal loop. Its code
 and architecture panels are rendered illustrations, not a filmed fresh installation or live voice demo.
 
-[Watch the Safari browser demo](https://github.com/aryanbhujade/laya-mlx-voice-browser/releases/download/v0.2.0/layabrowse-typed-safari-demo.mp4).
-This second video records eight verified local-Laya actions in Safari. Commands were entered as text;
-the conversational voice is a generated narration overlay, not live microphone input.
-
 > **Early alpha:** LayaBrowse is a source-installed macOS project, not a notarized downloadable app yet.
 > Expect rough edges on websites that frequently change their interface.
 
