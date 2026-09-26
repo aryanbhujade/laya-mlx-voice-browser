@@ -182,7 +182,7 @@ Safari automation; LayaBrowse reports the block rather than bypassing it.
 | Safari is signed out | This is a SafariDriver limitation. Choose Chrome/Edge/Brave and sign into the persistent LayaBrowse profile once. |
 | Chromium opened a new profile | Expected. LayaBrowse uses its own persistent automation profile rather than your personal profile. |
 | Google shows “unusual traffic” | Solve it manually in Chromium, or try later. Safari goal mode does not bypass the check or claim the search succeeded. |
-| It responds again only after toggling listening | Capture `layabrowse logs -n 100` and note the time. Re-toggling can recreate a stopped browser session; this recovery path is being investigated. |
+| Safari is slow or a command does not run | Wait for the page to finish loading, then retry the command. LayaBrowse keeps a busy Safari session rather than opening a competing one. If it remains stuck, capture `layabrowse logs -n 100` and note the time. |
 | A site-specific command stopped working | The website may have changed or the goal may be unsupported. Check the log's `goal stopped` reason; redact personal data before opening an issue. |
 | First installation is slow | The Laya weights are downloading once. Rerun `layabrowse install` if the download was interrupted. |
 
