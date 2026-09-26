@@ -1,19 +1,20 @@
+<img src="assets/layabrowse-mark.svg" alt="LayaBrowse L and spark logo" width="104">
+
 # LayaBrowse
 
 **Browse the web by speaking to your Mac.** Double-tap a shortcut, say what you want, and LayaBrowse
 uses a small local Laya model to choose browser actions, observe their results, and continue toward your goal.
+
+- Runs Laya decisions on your Apple-silicon Mac; no AI API key or generative LLM is required.
+- Works with Safari and supported Chromium browsers, including Chrome and Edge.
+- Chooses from actions available on the current page and checks the result before reporting success.
+- Keeps listening across commands until you turn voice control off.
 
 [![CI](https://github.com/aryanbhujade/laya-mlx-voice-browser/actions/workflows/ci.yml/badge.svg)](https://github.com/aryanbhujade/laya-mlx-voice-browser/actions/workflows/ci.yml)
 ![macOS 14+](https://img.shields.io/badge/macOS-14%2B-black)
 ![Apple silicon](https://img.shields.io/badge/Apple%20silicon-required-black)
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)
 [![MIT license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
-
-## Setup and architecture video
-
-[Watch the 1:35 setup and architecture walkthrough](https://github.com/aryanbhujade/laya-mlx-voice-browser/releases/download/v0.2.0/layabrowse-setup-goal-loop.mp4).
-This narrated, source-backed explainer shows the install steps and the default goal loop. Its code
-and architecture panels are rendered illustrations, not a filmed fresh installation or live voice demo.
 
 > **Early alpha:** LayaBrowse is a source-installed macOS project, not a notarized downloadable app yet.
 > Expect rough edges on websites that frequently change their interface.
@@ -29,9 +30,11 @@ double-tap Left Control → “open YouTube and search for ESP32 projects”
                          → “pause the video”
 ```
 
-Laya-MLX inference and action selection happen on your Mac. For locales supported by Apple's on-device
-recognizer, speech recognition stays on the Mac too. Laya is a classifier rather than a chatbot: it chooses from
-typed goals and available browser controls; it does not generate arbitrary code and execute it.
+The default model is the browser-trained [`cklxx/laya-browser` `v10s` checkpoint](https://huggingface.co/cklxx/laya-browser),
+run locally through the [laya-mlx](https://github.com/mizorewww/laya-mlx) inference library. Laya is the
+decision-model family; laya-mlx is the Apple-silicon runtime, not a different model. The older
+rules-first mode uses a different Laya checkpoint. See [How it works](docs/ARCHITECTURE.md) for the
+question → choice → browser-action loop.
 
 ## What you need
 
@@ -124,11 +127,9 @@ See the [command and workflow cookbook](docs/COMMANDS.md) for supported examples
 
 Goal mode uses site packs to expose observable search results, article/video/item detail pages, and
 safe navigation links. Its verified site-search goals currently cover Google, Wikipedia, YouTube,
-GitHub and eBay. eBay may show an automation challenge. YouTube's basic player and Shorts controls,
-theater mode on watch pages, and skipping an ad when YouTube shows a Skip button are available.
-Unskippable ads cannot be bypassed. Site-specific controls from the older rules-first engine are **not** all available in
-goal mode yet. Sorting/filter menus, purchases, email composition and account changes are not supported
-goal outcomes. See [Writing site packs](docs/SITE_PACKS.md) to expand this safely.
+GitHub and eBay. YouTube's basic player and Shorts controls, theater mode on watch pages, and
+skipping an ad when YouTube shows a Skip button are available. See [Writing site packs](docs/SITE_PACKS.md)
+to expand the observed controls and verified outcomes.
 
 ## How it behaves
 
@@ -137,7 +138,6 @@ goal outcomes. See [Writing site packs](docs/SITE_PACKS.md) to expand this safel
   result is observed before the loop continues or claims completion.
 - **Fast universal controls:** exact back, forward and scroll commands skip the model, after the phrase ends.
 - **Clarification instead of guessing:** uncertain or unsupported requests stop without an action.
-- **Consequential actions:** purchases, deletion, sending and account changes are unavailable in goal mode.
 - **Stale-page protection:** an action is discarded if the page changes before it can be executed.
 
 ## Browser sessions and accounts
@@ -207,14 +207,21 @@ Local data lives in:
 ~/Library/Logs/laya-voice-browser/service.log       local diagnostic log
 ```
 
-## What it does not do
+## Current limits
 
-- It is not a general macOS computer-use agent; this repository controls supported web browsers.
-- It does not understand every possible sentence or website control.
-- It cannot reuse your normal Safari session or personal Chromium profile.
-- It does not remove the need to review purchases, messages, account changes or other consequential actions.
-- It does not need browser-command fine-tuning to run. Fine-tuning is an optional later step after collecting a
-  properly split and redacted evaluation dataset; see [Training and calibration](docs/TRAINING.md).
+- This is a browser controller for supported websites, not a general macOS computer-use agent. It cannot
+  understand every sentence or operate every website control. Site-specific commands from the older
+  rules-first engine are not all available in the default goal mode.
+- Sorting and filtering menus, purchases, email composition, deletion, sending, and account changes are not
+  verified goal outcomes. Review consequential actions yourself.
+- SafariDriver uses a separate signed-out window; Chromium uses a separate persistent automation profile,
+  not your personal browser profile.
+- eBay or Google may present automation challenges. LayaBrowse does not bypass them, security warnings,
+  or unskippable YouTube ads.
+- Recognition mistakes, ambiguous links, and sites that change their interface can cause missed or wrong
+  actions. The development numbers below are not a guarantee for live voice use.
+- Fine-tuning is optional for running the app; it needs a properly split and redacted evaluation dataset.
+  See [Training and calibration](docs/TRAINING.md).
 
 ## Managing LayaBrowse
 
@@ -244,13 +251,21 @@ site-pack workflow, test expectations and pull-request checklist. Architecture d
 
 ## Performance and evidence
 
-Exact back/forward/scroll requests take **zero model passes**. In a development Safari Shorts session,
-Laya's decision passes for pause, mute, comments and next Short took 45–54 ms each; page execution and
-loading take additional time. The local model is not the speech recognizer, and these figures are not
-speech-to-visible-result latency. The full test suite and reproducible development journeys are in
-`tests/` and `scripts/`; [goal-loop measurements and limitations](docs/GOAL_LOOP.md) distinguish
-typed-command checks from microphone-driven use. Browser challenges, misheard speech and ambiguous
-links still cause real failures.
+The default browser-trained checkpoint is about **650 MB** and has a **1,024-token context**, with up to
+768 tokens for the question and options. One earlier running-process sample measured about **758 MB**
+of resident memory; actual usage varies by Mac, cache state, and workload. Exact back/forward/scroll
+requests take **zero model passes**, not zero elapsed time. In one development Safari Shorts session,
+Laya's decision passes for pause,
+mute, comments and next Short took **45–54 ms** each; speech recognition, page execution, and loading
+take additional time.
+
+On a **typed-command development replay** with saved and synthetic page observations, the older
+rules-first system covered **59/96** scheduled steps. The goal-loop branch covered **79/96** after its
+grounded-link fix. The same sequence of development comparisons reported **22 wrong actions** for the
+older system and **0** for the fixed goal loop on the original 96 steps. These compare complete systems
+with different checkpoints and simulated browser effects; they are **not** held-out accuracy figures or
+microphone-to-visible-action timings. The full methodology and remaining failures are in
+[goal-loop measurements](docs/GOAL_LOOP.md); tests and replay scripts are in `tests/` and `scripts/`.
 
 ## License and acknowledgements
 

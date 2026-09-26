@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="LayaBrowse L and spark mark">
+  <rect width="180" height="180" rx="42" fill="#e8f7ff"/>
+  <path d="M34 31a11 11 0 0 1 11-11h4a11 11 0 0 1 11 11v84h49a11 11 0 0 1 0 22H45a11 11 0 0 1-11-11z" fill="#126ba9"/>
+  <path d="M131 34 141.5 57.5 165 68l-23.5 10.5L131 102l-10.5-23.5L97 68l23.5-10.5z" fill="#138ac7"/>
+  <circle cx="152" cy="113" r="5" fill="#138ac7"/>
+</svg>

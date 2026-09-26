@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" role="img" aria-label="LayaBrowse social preview">
+  <defs>
+    <linearGradient id="sky" x2="1" y2="1"><stop stop-color="#f8fdff"/><stop offset="1" stop-color="#d9f2ff"/></linearGradient>
+    <radialGradient id="glow"><stop stop-color="#b1e3ff" stop-opacity=".75"/><stop offset="1" stop-color="#b1e3ff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="1280" height="640" fill="url(#sky)"/>
+  <circle cx="1080" cy="90" r="380" fill="url(#glow)"/>
+  <circle cx="118" cy="550" r="270" fill="url(#glow)"/>
+  <rect x="78" y="108" width="244" height="244" rx="56" fill="#e8f7ff"/>
+  <path d="M124 150a16 16 0 0 1 16-16h6a16 16 0 0 1 16 16v127h72a16 16 0 0 1 0 32h-94a16 16 0 0 1-16-16z" fill="#126ba9"/>
+  <path d="M250 147 266 181l34 16-34 16-16 34-16-34-34-16 34-16z" fill="#138ac7"/>
+  <circle cx="280" cy="266" r="8" fill="#138ac7"/>
+  <text x="370" y="235" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-weight="700" font-size="91" fill="#143d59">LayaBrowse</text>
+  <text x="86" y="444" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="47" fill="#255a78">Browse by voice. Decide locally.</text>
+  <text x="89" y="517" font-family="-apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif" font-size="28" fill="#4d748e">Safari · Chrome · Edge · Apple silicon</text>
+</svg>
