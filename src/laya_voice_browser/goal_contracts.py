@@ -31,12 +31,13 @@ class GoalContract:
     initial_scroll: float = 0
     link_label: str = ""
     query_from_page: bool = False
+    result_type: str = ""  # short narrows an explicitly spoken YouTube Short, not every video result
 
     def label(self) -> str:
         if self.kind == "switch_tab":
             return "Switch to the selected browser tab"
         if self.kind in {"pause_video", "play_video", "mute_video", "unmute_video",
-                         "next_video", "previous_video", "show_comments"}:
+                         "next_video", "previous_video", "show_comments", "theater_on", "skip_ad"}:
             return self.kind.replace("_", " ")
         if self.kind == "open_link":
             return f"Open {self.link_label}" if self.link_label else "Open a link on this page"
@@ -46,7 +47,9 @@ class GoalContract:
         if self.kind == "open_site":
             return f"Open {self.site}; no search or result opening requested"
         text = f"Search {self.site} for {self.query!r}"
-        return text + (f"; then open result number {self.ordinal}" if self.ordinal else "; show results only")
+        requested = "Short" if self.result_type == "short" else "result"
+        suffix = f"; then open {requested} number {self.ordinal}" if self.ordinal else "; show results only"
+        return text + suffix
 
 
 @dataclass(frozen=True)
@@ -77,6 +80,9 @@ def result_url(site: str, url: str) -> str | None:
         ids = parse_qs(parsed.query).get("v", [])
         if parsed.path == "/watch" and len(ids) == 1 and re.fullmatch(r"[\w-]{11}", ids[0]):
             return f"https://www.youtube.com/watch?v={ids[0]}"
+        short = re.fullmatch(r"/shorts/([\w-]{11})/?", parsed.path)
+        if short:
+            return f"https://www.youtube.com/shorts/{short[1]}"
     if site == "github":
         parts = parsed.path.strip("/").split("/")
         if (len(parts) == 2 and all(parts) and parts[0] not in
@@ -107,6 +113,13 @@ def observed_results(page: Snapshot) -> list[dict]:
                 and (site != "google" or safe_click(element, page))):
             results.append({"url": url, "title": item["title"]})
             seen.add(url)
+    return results
+
+
+def matching_results(page: Snapshot, result_type: str = "") -> list[dict]:
+    results = observed_results(page)
+    if result_type == "short":
+        return [item for item in results if urlparse(item["url"]).path.startswith("/shorts/")]
     return results
 
 
@@ -313,10 +326,13 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
     # A restriction against dropping explicitly requested work, not an action-selection rule.
     result_clause = re.search(
         r"\b(?:open|play|watch|click|show)\s+(?:me\s+)?(?:on\s+)?(?:the\s+)?"
-        r"(?:first|second|third|top|1st|2nd|3rd|video|result|repository|listing|item)\b", goal.text, re.I)
+        r"(?:first|second|third|top|1st|2nd|3rd|shorts?|video|result|repository|listing|item)\b",
+        goal.text, re.I)
     # "third" is a literal argument, like the query; offering 1-3 made Laya guess between them and it
     # scored near-uniform for anything but "first". Laya still decides whether a result is requested.
     ordinals = (spoken_ordinals(goal.text[result_clause.start():]) if result_clause else []) or [1, 2, 3]
+    result_type = ("short" if result_clause and re.search(
+        r"\bshorts?\b", goal.text[result_clause.start():], re.I) else "")
     tab_reference = re.search(
         r"\b(?:switch|close|next|previous)\b.*\btabs?\b|"
         r"\bgo\s+to\s+(?:the\s+)?(?:(?:first|second|third|last|other|next|previous)\s+tab|"
@@ -344,6 +360,8 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
             "audio": ({"mute_video", "unmute_video"}, r"\b(?:mute|unmute)\b"),
             "sequence": ({"next_video", "previous_video"}, r"\b(?:next|previous|skip)\b"),
             "comments": ({"show_comments"}, r"\bcomments?\b"),
+            "theater": ({"theater_on"}, r"\btheat(?:er|re)\b"),
+            "advertisement": ({"skip_ad"}, r"\bskip\s+(?:the\s+|this\s+|an?\s+)?ad\b"),
         }
         offered_media = set()
         if media.get("present") and not re.search(r"\b(?:next|previous) page\b", navigation_text, re.I):
@@ -351,6 +369,10 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
                 if re.search(pattern, navigation_text, re.I):
                     offered_media.update(kinds & controls.keys())
         options.update({kind: GoalContract(current_site or "", kind) for kind in offered_media})
+        if not (media.get("ad_showing") and media.get("skip_ad_available")):
+            options.pop("skip_ad", None)
+        if not urlparse(page.url).path.startswith("/watch"):
+            options.pop("theater_on", None)
         if page.tabs:
             if "new_tab" in spoken and _BLANK_TAB_REQUEST.fullmatch(goal.text.strip()):
                 options["new_tab"] = GoalContract("", "new_tab")
@@ -384,7 +406,8 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
         if not result_clause:
             options[f"search:{site}:{index}"] = GoalContract(site, "search", query)
         for ordinal in ordinals:
-            options[f"result:{site}:{index}:{ordinal}"] = GoalContract(site, "open_result", query, ordinal)
+            options[f"result:{site}:{index}:{ordinal}"] = GoalContract(
+                site, "open_result", query, ordinal, result_type=result_type)
     # Follow-up "open the first result" uses observed search scope/query, not invented speech.
     if not spans and result_clause and observed_results(page):
         key = definitions()[site]["query_key"]
@@ -392,7 +415,8 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
         if len(values) == 1:
             for ordinal in ordinals:
                 options[f"result:{site}:current:{ordinal}"] = GoalContract(
-                    site, "open_result", values[0], ordinal, query_from_page=True)
+                    site, "open_result", values[0], ordinal,
+                    query_from_page=True, result_type=result_type)
     return options
 
 
@@ -431,7 +455,7 @@ def verify(contract: GoalContract, page: Snapshot) -> Verification:
             delta < 0 if contract.kind == "scroll_up" else delta > 0)
         return Verification(moved, "scroll observed" if moved else "requested scroll not observed")
     if contract.kind in {"pause_video", "play_video", "mute_video", "unmute_video",
-                         "next_video", "previous_video", "show_comments"}:
+                         "next_video", "previous_video", "show_comments", "theater_on", "skip_ad"}:
         if browser_blocker(page) or scope(page.url) != contract.site:
             return Verification(False, "video page not available")
         media = page.browsing.get("media") or {}
@@ -443,6 +467,10 @@ def verify(contract: GoalContract, page: Snapshot) -> Verification:
             satisfied = same_tab and same_video and media.get("present") and media.get(field) is wanted
         elif contract.kind == "show_comments":
             satisfied = same_tab and same_video and page.browsing.get("comments_visible") is True
+        elif contract.kind == "theater_on":
+            satisfied = same_tab and same_video and media.get("theater") is True
+        elif contract.kind == "skip_ad":
+            satisfied = same_tab and same_video and media.get("ad_showing") is False
         else:
             before = urlparse(contract.initial_url)
             after = urlparse(page.url)
@@ -472,7 +500,7 @@ def verify(contract: GoalContract, page: Snapshot) -> Verification:
         contract.search_observed = True
         if contract.kind == "search":
             return Verification(True, "requested search visibly rendered")
-        results = observed_results(page)
+        results = matching_results(page, contract.result_type)
         if not contract.expected_url and len(results) >= contract.ordinal:
             contract.expected_url = results[contract.ordinal - 1]["url"]
     if contract.kind == "open_result":

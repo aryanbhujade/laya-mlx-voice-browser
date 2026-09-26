@@ -77,8 +77,18 @@ if (pack) {
     const commentRect = comments?.getBoundingClientRect();
     const panel = document.querySelector(
       'ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-comments-section"]');
+    const flexy = document.querySelector('ytd-watch-flexy');
+    const player = document.querySelector('.html5-video-player');
+    const skipButton = document.querySelector('.ytp-skip-ad-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button');
     browsing.media = {present: Boolean(media), paused: media ? Boolean(media.paused) : null,
-      muted: media ? Boolean(media.muted) : null};
+      muted: media ? Boolean(media.muted) : null,
+      theater: flexy ? flexy.hasAttribute('theater') : false,
+      ad_showing: player ? player.classList.contains('ad-showing') : false,
+      skip_ad_available: Boolean(skipButton && skipButton.getClientRects().length)};
+    if (shorts && media && document.title && document.title !== 'YouTube') {
+      browsing.detail_ready = true;
+      browsing.heading = document.title.replace(/\s*-\s*YouTube\s*$/, '').slice(0, 200);
+    }
     browsing.comments_visible = Boolean(
       (!shorts && commentRect && commentRect.width > 0 &&
        commentRect.top < innerHeight && commentRect.bottom > 0)
@@ -148,6 +158,11 @@ players.sort((a, b) => (a.paused - b.paused) || (loaded(b) - loaded(a)) || (area
 const m = players[0];
 if (command === 'skip_ad') {
   return done(tag('.ytp-skip-ad-button', '.ytp-ad-skip-button-modern', '.ytp-ad-skip-button') && 'skipped the ad');
+}
+if (command === 'theater' && youtube && !shorts) {
+  const flexy = document.querySelector('ytd-watch-flexy');
+  if (flexy?.hasAttribute('theater')) return done('theater mode already on');
+  return done(tag('.ytp-size-button') && 'theater mode on');
 }
 if (command === 'next' || command === 'previous') {
   const down = command === 'next';

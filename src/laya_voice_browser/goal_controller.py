@@ -282,6 +282,16 @@ class GoalController(StreamingController):
                 goal.history.append(item)
                 self._trace({"goal_id": goal.id, "execution": item})
                 after = self._observe_settled(generation, goal)
+                # YouTube can take another beat to replace an ad after its Skip button is
+                # pressed. Observe the same action's outcome; never click the button twice.
+                if (decision.action.get("type") == "media"
+                        and decision.action.get("command") == "skip_ad"):
+                    deadline = time.monotonic() + 2.0
+                    while (self._current(generation, goal)
+                           and (after.browsing.get("media") or {}).get("ad_showing") is True
+                           and time.monotonic() < deadline):
+                        time.sleep(0.2)
+                        after = self.browser.snapshot()
                 item.update(evidence(decision.candidate, decision.action, page, after))
                 self._trace({"goal_id": goal.id, "observation": item})
                 if not self._current(generation, goal):

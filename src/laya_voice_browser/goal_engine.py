@@ -210,11 +210,11 @@ class GoalEngine(LayaEngine):
             remaining[0].link_label = chosen.label
         goal.contract = remaining[0]
         if goal.contract.query_from_page:
-            from .goal_contracts import observed_results, search_matches
+            from .goal_contracts import matching_results, search_matches
 
             # Resolve the requested result while its source page is still available. Opening a
             # new tab must not discard search context or require the query to be spoken again.
-            results = observed_results(page)
+            results = matching_results(page, goal.contract.result_type)
             if (not search_matches(page, goal.contract.site, goal.contract.query)
                     or len(results) < goal.contract.ordinal):
                 raise UncertainDecision("That result is not present in the current search")

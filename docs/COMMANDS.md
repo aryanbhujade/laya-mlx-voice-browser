@@ -13,12 +13,16 @@ examples of supported outcomes, not a promise that every phrasing or changing we
 “Mute the video.”
 “Open the comments.”
 “Next short.”                  # while a Short is open
+“Theater mode.”                # on a standard YouTube watch page
+“Skip the ad.”                 # only when YouTube shows a Skip button
 ```
 
 Search goals are grounded to the requested site. A search must render its results before it counts
 as complete; opening the first/second/third result is a separate outcome. Google, YouTube, Wikipedia,
 GitHub and eBay have search-result observations. On eBay or Google, an automation challenge may block
 the journey. LayaBrowse does not solve or bypass it.
+Theater mode is verified from the player layout. An ad skip is attempted only when an ad and visible
+Skip button are observed; unskippable ads are left alone.
 
 ## Navigate links and tabs
 

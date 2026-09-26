@@ -115,7 +115,8 @@ LayaBrowse stays in listening mode between commands. It does not stop after ever
 | Scroll | “scroll down a little”, “scroll up” |
 | Navigate | “go back”, “go forward” |
 | Manage tabs | “open a new tab”, “switch to the YouTube tab”, “close the other tabs” |
-| YouTube Shorts | “pause”, “mute”, “open the comments”, “next short” |
+| YouTube video and Shorts | “pause”, “mute”, “open the comments”, “next short” |
+| YouTube watch page | “theater mode”, “skip the ad” (when a Skip button is available) |
 
 See the [command and workflow cookbook](docs/COMMANDS.md) for supported examples and current limits.
 
@@ -123,8 +124,9 @@ See the [command and workflow cookbook](docs/COMMANDS.md) for supported examples
 
 Goal mode uses site packs to expose observable search results, article/video/item detail pages, and
 safe navigation links. Its verified site-search goals currently cover Google, Wikipedia, YouTube,
-GitHub and eBay. eBay may show an automation challenge. YouTube's basic player and Shorts controls
-are available; site-specific controls from the older rules-first engine are **not** all available in
+GitHub and eBay. eBay may show an automation challenge. YouTube's basic player and Shorts controls,
+theater mode on watch pages, and skipping an ad when YouTube shows a Skip button are available.
+Unskippable ads cannot be bypassed. Site-specific controls from the older rules-first engine are **not** all available in
 goal mode yet. Sorting/filter menus, purchases, email composition and account changes are not supported
 goal outcomes. See [Writing site packs](docs/SITE_PACKS.md) to expand this safely.
 

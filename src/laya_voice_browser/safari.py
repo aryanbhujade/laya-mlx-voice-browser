@@ -273,7 +273,14 @@ class SafariBrowser:
             if not done:
                 raise NoMedia(f"nothing on this page can {action['command'].replace('_', ' ')}")
             if done.get("press"):
-                self.driver.execute_script("document.querySelector('[data-laya-press]')?.click()")
+                if action["command"] == "skip_ad":
+                    # YouTube ignores a synthetic JS click on some ad overlays. WebDriver's
+                    # native element click is the same input path used for ordinary page links.
+                    from selenium.webdriver.common.by import By
+
+                    self.driver.find_element(By.CSS_SELECTOR, "[data-laya-press]").click()
+                else:
+                    self.driver.execute_script("document.querySelector('[data-laya-press]')?.click()")
         elif kind == "site":
             self._site(action)
         elif kind == "new_tab":

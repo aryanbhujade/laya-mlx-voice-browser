@@ -207,7 +207,7 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
             source="capability")}}
     media_commands = {"pause_video": "pause", "play_video": "play", "mute_video": "mute",
                       "unmute_video": "unmute", "next_video": "next", "previous_video": "previous",
-                      "show_comments": "comments"}
+                      "show_comments": "comments", "theater_on": "theater", "skip_ad": "skip_ad"}
     if goal.contract and goal.contract.kind in media_commands:
         command = media_commands[goal.contract.kind]
         return {"CLICK": {f"media:{command}": Candidate(

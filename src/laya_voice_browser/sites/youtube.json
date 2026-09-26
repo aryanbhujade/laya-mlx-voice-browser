@@ -7,7 +7,7 @@
     "site": "youtube", "home": "https://www.youtube.com/",
     "search_url": "https://www.youtube.com/results?search_query={query}", "query_key": "search_query",
     "results_selector": "ytd-search",
-    "result_selector": "ytd-video-renderer a#video-title, yt-lockup-view-model a[href*='/watch?']",
+    "result_selector": "ytd-video-renderer a#video-title, yt-lockup-view-model a[href*='/watch?'], ytm-shorts-lockup-view-model h3 a[href^='/shorts/'], ytd-reel-item-renderer a[href^='/shorts/']",
     "heading_selector": "ytd-watch-metadata h1, #info-contents h1",
     "detail_selector": "#movie_player video",
     "media_controls": {
@@ -17,7 +17,9 @@
       "unmute_video": "Unmute the current video",
       "next_video": "Open the next Short or video",
       "previous_video": "Open the previous Short or video",
-      "show_comments": "Show this video's comments"
+      "show_comments": "Show this video's comments",
+      "theater_on": "Switch the video to theater mode",
+      "skip_ad": "Skip the current ad when the skip button is available"
     }
   },
   "actions": [
