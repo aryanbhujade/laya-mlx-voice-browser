@@ -1,22 +1,20 @@
-# LayaBrowse 0.2.0 — goal mode by default
+# LayaBrowse 0.2.1 — YouTube player controls
 
-`layabrowse install` now installs the local Laya goal loop without flags. The Swift menu-bar app,
-LaunchAgent and foreground CLI use the same default. The previous rules-first engine remains
-available with `layabrowse install --legacy` for comparison or rollback.
+This source-install alpha extends the default, local-Laya goal loop with two YouTube controls:
 
-The loop asks Laya to choose a supported outcome and a compatible browser action, observes the page,
-then checks that the outcome occurred before reporting success. It currently supports safe site
-navigation, searches and numbered results on selected sites, visible links, tabs, basic scrolling,
-and YouTube video/Short controls. New tabs open Google. Exact back, forward and scroll remain narrow
-zero-model shortcuts. Search, link and media decisions still use Laya.
+- **Theater mode** on a standard watch page. Laya chooses the supported outcome, the browser turns
+  the mode on only if needed, and the controller verifies the observed player layout.
+- **Skip the ad** only when YouTube shows an ad and a visible Skip button. Safari uses a native
+  WebDriver click and the controller checks that the ad ends. Unskippable ads are not bypassed.
 
-This is a **source-install alpha**, not a redistributable or notarized `.app`. The native app is built
-and signed locally by `layabrowse install` because it depends on the local Python environment and
-model cache. The GitHub release's automatically generated source archives are the release files;
-follow the [README](README.md) to install. A setup/architecture explainer is attached separately.
+YouTube Shorts can now appear as distinct search results, so “open the first Short” does not silently
+open an earlier standard video result. Existing play/pause, mute/unmute, next/previous video or Short,
+and comments controls remain available.
 
-Known limits: the SafariDriver session is separate from ordinary signed-in Safari tabs; Google and
-eBay can present automation challenges; speech recognition can mishear commands; ambiguous links
-can abstain or be chosen incorrectly; sorting/filter menus, purchases, messages and account changes
-are not yet verified goal capabilities. A reported recovery after toggling listening off/on is still
-under investigation. Do not treat this as a general computer-use agent.
+Install from the [README](README.md) with `layabrowse install`. This is **not** a notarized `.app`;
+the native menu-bar app is built locally. The release includes source archives, not a packaged binary.
+
+Verification: 345 local tests and Ruff pass. These checks cover action selection, observed outcomes,
+and skip-button gating; they are not a claim that every YouTube ad variant or live speech phrasing has
+been tested. YouTube can change its player controls. SafariDriver still uses a separate signed-out
+automation window; shopping, account changes, arbitrary forms and filters are outside verified goals.
