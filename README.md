@@ -16,6 +16,12 @@ uses a small local Laya model to choose browser actions, observe their results, 
 ![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue)
 [![MIT license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
+## Watch the demo
+
+https://github.com/user-attachments/assets/74d7a4a0-6c2c-4888-b12b-f02f1af81a0a
+
+[Download the full-resolution 4K video](https://github.com/aryanbhujade/laya-mlx-voice-browser/releases/download/v0.2.2/LayaBrowse-live-demo-v5.mp4).
+
 > **Early alpha:** LayaBrowse is a source-installed macOS project, not a notarized downloadable app yet.
 > Expect rough edges on websites that frequently change their interface.
 
