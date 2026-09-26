@@ -60,6 +60,63 @@ def test_search_needs_matching_query_and_real_listing_observations():
     assert not verify(GoalContract("ebay", "open_site"), error).satisfied
 
 
+@pytest.mark.parametrize("site", ["amazon", "reddit", "hacker_news", "ebay"])
+@pytest.mark.parametrize("page", [
+    Snapshot("https://www.google.com/", "Google", "Store", (
+        Element("store", "link", "Store", "a", href="https://store.google.com/"),), "google"),
+    Snapshot("https://www.youtube.com/", "YouTube", "Videos", (
+        Element("video", "link", "Amazon camera review", "a",
+                href="https://www.youtube.com/watch?v=12345678901"),), "youtube"),
+    BLANK,
+])
+def test_named_homepage_never_competes_with_page_links(site, page):
+    from laya_voice_browser.goals import HOMES
+
+    spoken = "Hacker News" if site == "hacker_news" else site
+    goal = Goal("g", f"open {spoken}")
+    options = contract_options(goal, page)
+    assert len(options) == 1 and next(iter(options.values())).kind == "open_site"
+    engine = RecordingGoalEngine({"objective": "open_site", "operation": "CLICK",
+                                  "target": f"site:{site}"})
+    engine.prepare(goal, page)
+    assert [qid for qid, _, _ in engine.asked] == ["objective"]
+    choices = action_space(goal, page)["CLICK"]
+    assert [candidate.action for candidate in choices.values()] == [
+        {"type": "navigate", "url": HOMES[site]}]
+    assert engine.choose(goal, page).action == {"type": "navigate", "url": HOMES[site]}
+    home = replace(page, url=HOMES[site], title="Home", text="Welcome", browsing={})
+    assert verify(goal.contract, home).satisfied
+    assert not verify(goal.contract, replace(home, url="https://store.google.com/")).satisfied
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("go to ebay.com", "https://ebay.com"),
+    ("open reddit.com/r/python", "https://reddit.com/r/python"),
+    ("open amazon.de", "https://amazon.de"),
+    ("open example.org/path", "https://example.org/path"),
+])
+def test_spoken_addresses_bind_the_exact_destination(text, expected):
+    goal = Goal("g", text)
+    contract = next(iter(contract_options(goal, BLANK).values()))
+    assert contract.kind in {"open_site", "open_url"}
+    assert contract.expected_url == expected
+    actions = action_space(Goal("g", text, contract=contract), BLANK)["CLICK"]
+    assert [candidate.action for candidate in actions.values()] == [
+        {"type": "navigate", "url": expected}]
+    landed = Snapshot(expected, "Loaded", "Hello", (), "landed")
+    assert verify(contract, landed).satisfied
+    assert not verify(contract, replace(landed, url="https://store.google.com/")).satisfied
+
+
+def test_unnamed_store_link_still_opens_the_observed_page_link():
+    google = Snapshot("https://www.google.com/", "Google", "Search", (
+        Element("store", "link", "Store", "a", href="https://store.google.com/"),), "google")
+    engine = RecordingGoalEngine({"target": "store", "objective": "open_link"})
+    goal = Goal("g", "open the Store link")
+    engine.prepare(goal, google)
+    assert goal.contract.expected_url == "https://store.google.com/"
+
+
 @pytest.mark.parametrize("text", ["open the second listing", "click on the second item",
                                   "open the second link", "show me the second result"])
 def test_followup_result_uses_observed_query_without_asking_for_unspoken_text(text):

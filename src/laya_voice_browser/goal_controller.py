@@ -119,11 +119,10 @@ class GoalController(StreamingController):
             return
         started = time.perf_counter()
         try:
-            page = self.browser.snapshot()
-            if not self._current(generation, goal):
-                return
+            # Universal browser controls do not refer to page elements. In particular,
+            # a broken/challenged page must not prevent Back from leaving it.
             self._direct_ids = (self._direct_ids + [goal.id])[-32:]
-            self.browser.execute(action, expected_fingerprint=page.fingerprint)
+            self.browser.execute(action)
             goal.history.append({"executed": action, "source": "universal"})
             goal.status = "direct_done"
             self.announce(f"Universal action: {action} (0 model ms)")
@@ -183,11 +182,11 @@ class GoalController(StreamingController):
                 self._status("thinking")
                 page = self.browser.snapshot()
                 blocker = browser_blocker(page)
-                tab_controls = {"switch_tab", "close_tab", "close_other_tabs", "new_tab"}
-                # A challenge blocks page automation, not a fresh request to leave/switch tabs.
+                escape_controls = {"switch_tab", "close_tab", "close_other_tabs", "new_tab", "open_site"}
+                # A challenge blocks interaction with that page, not a fresh request to leave it.
                 allowed_on_blocker = (
-                    not blocker or (goal.contract and goal.contract.kind in tab_controls)
-                    or (not prepared and any(c.kind in tab_controls
+                    not blocker or (goal.contract and goal.contract.kind in escape_controls)
+                    or (not prepared and any(c.kind in escape_controls
                                             for c in contract_options(goal, page).values())))
                 if blocker and not allowed_on_blocker:
                     goal.status = blocker
@@ -211,7 +210,7 @@ class GoalController(StreamingController):
                     prepared = True
                     self._trace({"goal_id": goal.id, "interpretation": asdict(interpretation),
                                  "contract": asdict(goal.contract) if goal.contract else None})
-                if blocker and (not goal.contract or goal.contract.kind not in tab_controls):
+                if blocker and (not goal.contract or goal.contract.kind not in escape_controls):
                     goal.status = blocker
                     self.announce("Browser verification is required; page actions remain blocked")
                     break

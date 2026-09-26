@@ -67,7 +67,21 @@ def test_named_result_cannot_be_satisfied_by_a_homepage():
     options = contract_options(Goal("g", "open the Wikipedia result"), p)
     assert {c.kind for c in options.values()} == {"open_link"}
     options = contract_options(Goal("g", "open Wikipedia"), p)
-    assert {c.kind for c in options.values()} == {"open_link", "open_site"}
+    assert {c.kind for c in options.values()} == {"open_site"}
+
+
+def test_named_result_target_options_stay_on_the_named_site():
+    p = page("duckduckgo_results")
+    links = link_options(p)
+    wikipedia = next(key for key, candidate in links.items()
+                     if candidate.action["url"] == "https://en.wikipedia.org/wiki/Alan_Turing")
+    engine = RecordingGoalEngine({"target": wikipedia, "objective": "open_link"})
+    goal = Goal("g", "open the Wikipedia result")
+    engine.prepare(goal, p)
+    offered = engine.asked[0][1]
+    assert all("wikipedia.org" in links[key].action["url"]
+               for key in offered if key != "none")
+    assert goal.contract.expected_url == "https://en.wikipedia.org/wiki/Alan_Turing"
 
 
 def test_model_nominates_before_grounded_outcome_and_keeps_new_tab_requirement():
@@ -93,12 +107,12 @@ def test_nomination_is_not_permission_and_refusal_keeps_trace():
 
 
 def test_none_never_falls_back_to_a_homepage_or_another_link():
-    engine = RecordingGoalEngine({"target": "none"})
+    engine = RecordingGoalEngine({"objective": "unsupported"})
     goal = Goal("g", "open Wikipedia")
-    with pytest.raises(UncertainDecision, match="Which destination"):
+    with pytest.raises(UncertainDecision, match="outside this browsing pilot"):
         engine.prepare(goal, page("duckduckgo_results"))
     assert goal.contract is None
-    assert [q[0] for q in engine.asked] == ["target"]
+    assert [q[0] for q in engine.asked] == ["objective"]
 
 
 @pytest.mark.parametrize("text", [

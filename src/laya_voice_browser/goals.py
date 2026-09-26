@@ -79,6 +79,10 @@ def scope(url: str) -> str | None:
     pack = pack_for(url)
     if pack and pack.browsing.get("site"):
         return pack.browsing["site"]
+    if pack:
+        named = pack.name.casefold().replace(" ", "_")
+        if named in HOMES:
+            return named
     return site_for_url(url)
 
 
@@ -204,6 +208,12 @@ def action_space(goal: Goal, page: Snapshot) -> dict[str, dict[str, Candidate]]:
             return {}
         return {"CLICK": {"link": Candidate(
             goal.contract.label(), {"type": "navigate", "url": goal.contract.expected_url},
+            source="capability")}}
+    if goal.contract and goal.contract.kind in {"open_site", "open_url"}:
+        site = goal.contract.site
+        destination = goal.contract.expected_url or HOMES[site]
+        return {"CLICK": {f"site:{site or 'address'}": Candidate(
+            goal.contract.label(), {"type": "navigate", "url": destination},
             source="capability")}}
     media_commands = {"pause_video": "pause", "play_video": "play", "mute_video": "mute",
                       "unmute_video": "unmute", "next_video": "next", "previous_video": "previous",

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from laya_voice_browser import service
-from laya_voice_browser.browser import BrowserSessionLost, ReconnectingBrowser, StalePage
+from laya_voice_browser.browser import BrowserBusy, BrowserSessionLost, ReconnectingBrowser, StalePage
 from laya_voice_browser.cli import SERVICE_COMMANDS
 from laya_voice_browser.types import Snapshot
 
@@ -160,6 +160,73 @@ def test_double_tap_replaces_a_stopped_session():
     made[0].stopped = True  # the user pressed "Stop Session"
     browser.ensure_alive()
     assert len(made) == 2 and browser.snapshot().title == "b1"
+
+
+def test_busy_health_never_creates_a_second_safari_session():
+    made = []
+
+    class BusyBrowser(FlakyBrowser):
+        def health(self):
+            return "busy"
+
+    def factory():
+        made.append(BusyBrowser("safari"))
+        return made[-1]
+
+    browser = ReconnectingBrowser(factory, announce=lambda _: None)
+    first = browser.ensure()
+    for _ in range(5):
+        with pytest.raises(BrowserBusy, match="still loading"):
+            browser.ensure_alive()
+    assert len(made) == 1 and not first.closed
+
+
+def test_gone_session_must_finish_closing_before_replacement(monkeypatch):
+    from laya_voice_browser import browser as browser_module
+
+    monkeypatch.setattr(browser_module, "_RELEASE_WAIT_SECONDS", 0.01)
+    release = threading.Event()
+    made = []
+
+    class SlowClose(FlakyBrowser):
+        def health(self):
+            return "gone"
+
+        def close(self):
+            assert release.wait(1)
+            self.closed = True
+
+    def factory():
+        made.append(SlowClose("old") if not made else FlakyBrowser("new"))
+        return made[-1]
+
+    browser = ReconnectingBrowser(factory, announce=lambda _: None)
+    browser.ensure()
+    with pytest.raises(BrowserBusy, match="releasing"):
+        browser.ensure_alive()
+    assert len(made) == 1
+    release.set()
+    assert browser._closing.wait(1)
+    assert browser.ensure().name == "new"
+
+
+def test_paired_session_failure_has_a_cooldown_instead_of_retrying_every_command():
+    attempts = []
+
+    def factory():
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("Safari instance is already paired with another WebDriver session")
+        return FlakyBrowser("recovered")
+
+    browser = ReconnectingBrowser(factory, announce=lambda _: None)
+    with pytest.raises(BrowserBusy, match="paired"):
+        browser.ensure()
+    with pytest.raises(BrowserBusy, match="paired"):
+        browser.ensure()
+    assert len(attempts) == 1
+    browser._retry_after = 0
+    assert browser.ensure().name == "recovered"
 
 
 def test_install_waits_for_launchd_to_let_go_of_the_old_service(monkeypatch, tmp_path):

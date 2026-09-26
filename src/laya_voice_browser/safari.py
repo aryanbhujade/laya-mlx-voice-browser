@@ -28,13 +28,15 @@ _NAVIGATION_WAIT_SECONDS = 3.0
 # Selenium waits 120 s by default; a stopped session should fail fast so the next command reopens.
 _COMMAND_TIMEOUT_SECONDS = 20.0
 _ALIVE_TIMEOUT_SECONDS = 2.5
+_PAGE_LOAD_TIMEOUT_SECONDS = 10.0
 
 
 def _session_lost(exc: Exception) -> bool:
     """The session or driver is gone: stopped from Safari's banner, window closed, or driver dead."""
     name = type(exc).__name__
     return (
-        name in {"InvalidSessionIdException", "NoSuchWindowException", "MaxRetryError", "ProtocolError"}
+        name in {"InvalidSessionIdException", "NoSuchWindowException", "MaxRetryError",
+                 "ProtocolError", "NewConnectionError", "RemoteDisconnected"}
         or isinstance(exc, (ConnectionError, TimeoutError))
         or (name == "WebDriverException" and "session" in str(exc).casefold())
     )
@@ -61,50 +63,86 @@ class SafariBrowser:
             except Exception:
                 pass
         self.driver = driver
+        self._command_lock = threading.RLock()
+        self._probe_lock = threading.Lock()
+        self._probe: threading.Thread | None = None
+        self._probe_state = "busy"
         client = getattr(getattr(driver, "command_executor", None), "_client_config", None)
         if client is not None:
             client.timeout = _COMMAND_TIMEOUT_SECONDS
-        self.driver.get(start_url)
+        try:
+            set_load_timeout = getattr(driver, "set_page_load_timeout", None)
+            if set_load_timeout is not None:
+                set_load_timeout(_PAGE_LOAD_TIMEOUT_SECONDS)
+            self.driver.get(start_url)
+            # WebDriver can only read the current tab's title, so remember each tab's as it is visited.
+            order = list(self.driver.window_handles)
+        except Exception:
+            # An incomplete constructor must not leave Safari paired to a session
+            # that LayaBrowse never got a chance to retain or close.
+            try:
+                driver.quit()
+            except Exception:
+                pass
+            raise
         self._last_snapshot: Snapshot | None = None
-        # WebDriver can only read the current tab's title, so remember each tab's as it is visited.
         self._tab_titles: dict[str, tuple[str, str]] = {}
-        self._tab_order = list(self.driver.window_handles)
+        self._tab_order = order
 
     def close(self) -> None:
-        if self.driver is not None:
-            self.driver.quit()
-            self.driver = None
+        with self._command_lock:
+            if self.driver is not None:
+                self.driver.quit()
+                self.driver = None
 
-    def alive(self) -> bool:
-        """A quick check that the session still answers; "Stop Session" can leave it hanging."""
+    def health(self) -> str:
+        """Alive, busy, or gone. A slow probe never authorizes a replacement session."""
         if self.driver is None:
-            return False
-        result: list[bool] = []
+            return "gone"
 
         def probe() -> None:
             try:
-                self.driver.execute_script("return 1")
-                result.append(True)
-            except Exception:
-                result.append(False)
+                with self._command_lock:
+                    self.driver.execute_script("return 1")
+                state = "alive"
+            except Exception as exc:
+                state = "gone" if _session_lost(exc) else "busy"
+            with self._probe_lock:
+                self._probe_state = state
 
-        worker = threading.Thread(target=probe, daemon=True)
-        worker.start()
+        with self._probe_lock:
+            if self._probe is not None:
+                if self._probe.is_alive():
+                    return "busy"
+                state, self._probe = self._probe_state, None
+                return state
+            if not self._command_lock.acquire(blocking=False):
+                return "busy"
+            self._command_lock.release()
+            self._probe_state = "busy"
+            self._probe = threading.Thread(target=probe, daemon=True)
+            worker = self._probe
+            worker.start()
         worker.join(_ALIVE_TIMEOUT_SECONDS)
-        return bool(result and result[0])
+        with self._probe_lock:
+            return "busy" if worker.is_alive() else self._probe_state
+
+    def alive(self) -> bool:
+        return self.health() == "alive"
 
     def snapshot(self) -> Snapshot:
-        try:
-            from .sites import browsing_probes
+        with self._command_lock:
+            try:
+                from .sites import browsing_probes
 
-            raw = self.driver.execute_script(SNAPSHOT_JS, MAX_OBSERVED_ELEMENTS, browsing_probes())
-        except Exception as exc:
-            if _session_lost(exc):
-                raise BrowserSessionLost("The Safari automation window is gone") from exc
-            raise
-        snapshot = snapshot_from_raw(raw, tabs=self._tabs(raw))
-        self._last_snapshot = snapshot
-        return snapshot
+                raw = self.driver.execute_script(SNAPSHOT_JS, MAX_OBSERVED_ELEMENTS, browsing_probes())
+            except Exception as exc:
+                if _session_lost(exc):
+                    raise BrowserSessionLost("The Safari automation window is gone") from exc
+                raise
+            snapshot = snapshot_from_raw(raw, tabs=self._tabs(raw))
+            self._last_snapshot = snapshot
+            return snapshot
 
     def _press_keys(self, spec: str) -> None:
         from selenium.webdriver.common.action_chains import ActionChains
@@ -199,19 +237,31 @@ class SafariBrowser:
                     return
             time.sleep(0.02)
 
+    def _navigate(self, url: str) -> None:
+        try:
+            self.driver.get(url)
+        except Exception as exc:
+            # A WebDriver page-load timeout is not a dead session. Observe the
+            # partially rendered page and let the goal verifier decide.
+            if type(exc).__name__ != "TimeoutException":
+                raise
+
     def show_candidates(self, candidates: list[tuple[int, str]]) -> None:
-        self.driver.execute_script(CANDIDATES_JS, [[number, element_id] for number, element_id in candidates])
+        with self._command_lock:
+            self.driver.execute_script(CANDIDATES_JS, [[number, element_id] for number, element_id in candidates])
 
     def clear_candidates(self) -> None:
-        self.driver.execute_script(CANDIDATES_JS, [])
+        with self._command_lock:
+            self.driver.execute_script(CANDIDATES_JS, [])
 
     def execute(self, action: dict[str, Any], expected_fingerprint: str | None = None) -> dict[str, Any]:
-        try:
-            return self._execute(action, expected_fingerprint)
-        except Exception as exc:
-            if _session_lost(exc):
-                raise BrowserSessionLost("The Safari automation window is gone") from exc
-            raise
+        with self._command_lock:
+            try:
+                return self._execute(action, expected_fingerprint)
+            except Exception as exc:
+                if _session_lost(exc):
+                    raise BrowserSessionLost("The Safari automation window is gone") from exc
+                raise
 
     def _execute(self, action: dict[str, Any], expected_fingerprint: str | None) -> dict[str, Any]:
         if expected_fingerprint and self._last_snapshot:
@@ -221,7 +271,7 @@ class SafariBrowser:
         kind = action["type"]
         before_url = self.driver.current_url
         if kind == "navigate":
-            self.driver.get(action["url"])
+            self._navigate(action["url"])
         elif kind == "click":
             target = next(
                 (
@@ -263,9 +313,9 @@ class SafariBrowser:
                 )
                 self.driver.execute_script("scrollBy(0, arguments[0])", direction * pixels)
         elif kind == "back":
-            self.driver.back()
+            self._history_move("back", before_url)
         elif kind == "forward":
-            self.driver.forward()
+            self._history_move("forward", before_url)
         elif kind == "reload":
             self.driver.refresh()
         elif kind == "media":
@@ -285,7 +335,7 @@ class SafariBrowser:
             self._site(action)
         elif kind == "new_tab":
             self.driver.switch_to.new_window("tab")
-            self.driver.get(NEW_TAB_URL)
+            self._navigate(NEW_TAB_URL)
         elif kind == "close_tab":
             handles = self._handles()
             if len(handles) <= 1:
@@ -321,6 +371,11 @@ class SafariBrowser:
             select.select_by_visible_text(matches[0].text)
         else:
             raise ValueError(f"Unsupported action: {kind}")
+        # These controls need no DOM observation. SafariDriver can reject a large
+        # snapshot on a broken page even though Back/scroll itself succeeded.
+        if kind in {"back", "forward", "reload", "scroll"}:
+            return {"ok": True, "action": action, "before_url": before_url,
+                    "after_url": self.driver.current_url, "page_changed": None}
         time.sleep(0.08)
         after = self.snapshot()
         return {
@@ -330,3 +385,14 @@ class SafariBrowser:
             "after_url": after.url,
             "page_changed": after.fingerprint != expected_fingerprint if expected_fingerprint else None,
         }
+
+    def _history_move(self, direction: str, before_url: str) -> None:
+        try:
+            getattr(self.driver, direction)()
+        except Exception as exc:
+            # SafariDriver sometimes rejects its native history command with this
+            # exact error. Only try JS if the URL is still unchanged, avoiding a
+            # second history move if the first command actually took effect.
+            if type(exc).__name__ != "InvalidArgumentException" or self.driver.current_url != before_url:
+                raise
+            self.driver.execute_script(f"history.{direction}()")

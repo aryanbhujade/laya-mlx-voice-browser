@@ -191,3 +191,20 @@ def test_browser_challenge_does_not_trap_a_tab_switch_request():
         assert browser.executed == [{"type": "switch_tab", "tab_id": TABS[0].id}]
     finally:
         controller.close()
+
+
+def test_browser_challenge_does_not_trap_a_request_to_leave_for_another_site():
+    challenge = replace(PAGE, url="https://www.google.com/sorry/index", title="Verification required")
+    youtube = Snapshot("https://www.youtube.com/", "YouTube", "Videos", (), "youtube",
+                       browsing={"site": "youtube"})
+    browser = Browser([challenge, youtube])
+    engine = RecordingGoalEngine({"objective": "open_site", "operation": "CLICK",
+                                  "target": "site:youtube"})
+    controller = GoalController(browser, engine, announce=lambda _: None)
+    try:
+        controller.submit(event("go to YouTube"))
+        controller.wait_idle()
+        assert controller.goal.status == "verified_done"
+        assert browser.executed == [{"type": "navigate", "url": "https://www.youtube.com/"}]
+    finally:
+        controller.close()

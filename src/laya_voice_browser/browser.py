@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import threading
+import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
 from .types import Snapshot
 
 NEW_TAB_URL = "https://www.google.com/"
+_RELEASE_WAIT_SECONDS = 5.0
 
 
 def pick_tab(ids: list[str], current: str, action: dict[str, Any]) -> str:
@@ -38,6 +40,10 @@ NoMedia = Unavailable
 
 class BrowserSessionLost(RuntimeError):
     """The controlled browser session is gone (window closed, browser quit or driver crashed)."""
+
+
+class BrowserBusy(Unavailable):
+    """The existing browser session is still busy or being released; do not replace it."""
 
 
 class Browser(Protocol):
@@ -74,6 +80,8 @@ class ReconnectingBrowser:
         self._announce = announce
         self._browser: Browser | None = None
         self._lock = threading.RLock()
+        self._closing: threading.Event | None = None
+        self._retry_after = 0.0
 
     @property
     def open(self) -> bool:
@@ -82,32 +90,59 @@ class ReconnectingBrowser:
     def ensure(self) -> Browser:
         with self._lock:
             if self._browser is None:
+                if self._closing is not None and not self._closing.is_set():
+                    raise BrowserBusy("Safari is still releasing its automation session; try shortly")
+                if time.monotonic() < self._retry_after:
+                    raise BrowserBusy("Safari's automation session is still paired; try shortly")
                 self._announce("opening the browser")
-                self._browser = self._factory()
+                try:
+                    self._browser = self._factory()
+                except RuntimeError as exc:
+                    if "already paired with another WebDriver session" not in str(exc):
+                        raise
+                    self._retry_after = time.monotonic() + 5.0
+                    raise BrowserBusy("Safari's automation session is still paired; try shortly") from exc
+                self._retry_after = 0.0
             return self._browser
 
     def ensure_alive(self) -> Browser:
         """Like `ensure`, but first replace a session that stopped answering (e.g. "Stop Session")."""
         with self._lock:
+            health = getattr(self._browser, "health", None)
             alive = getattr(self._browser, "alive", None)
-            if self._browser is not None and alive is not None and not alive():
+            state = (health() if health else "alive" if alive is None or alive() else "gone")
+            if self._browser is not None and state == "busy":
+                raise BrowserBusy("Safari is still loading; try shortly")
+            if self._browser is not None and state == "gone":
                 self._announce("the browser session stopped; opening a new one")
-                self._drop()
+                self._drop(wait=True)
             return self.ensure()
 
-    def _drop(self) -> None:
+    def _drop(self, *, wait: bool = False) -> None:
         with self._lock:
             browser, self._browser = self._browser, None
-        if browser is not None:
-            # Closing a dead session can itself hang; never make the user wait for it.
-            threading.Thread(target=_close_quietly, args=(browser,), daemon=True).start()
+            if browser is not None:
+                finished = threading.Event()
+                self._closing = finished
+
+                def release() -> None:
+                    try:
+                        _close_quietly(browser)
+                    finally:
+                        finished.set()
+
+                threading.Thread(target=release, daemon=True).start()
+            else:
+                finished = self._closing
+        if wait and finished is not None and not finished.wait(_RELEASE_WAIT_SECONDS):
+            raise BrowserBusy("Safari is still releasing its automation session; try shortly")
 
     def snapshot(self) -> Snapshot:
         try:
             return self.ensure().snapshot()
         except BrowserSessionLost:
             # The window was closed since the last command: reopen and observe the new one.
-            self._drop()
+            self._drop(wait=True)
             return self.ensure().snapshot()
 
     def execute(self, action: dict[str, Any], expected_fingerprint: str | None = None) -> dict[str, Any]:

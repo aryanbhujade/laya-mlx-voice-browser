@@ -12,6 +12,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from .goals import Candidate, Goal, browser_blocker, literal_spans, safe_click, scope, tab_candidates
 from .sites import browsing_probes
+from .spans import as_https, url_candidates
 from .types import Element, Snapshot
 
 
@@ -30,6 +31,7 @@ class GoalContract:
     initial_url: str = ""
     initial_scroll: float = 0
     link_label: str = ""
+    link_scope_explicit: bool = False
     query_from_page: bool = False
     result_type: str = ""  # short narrows an explicitly spoken YouTube Short, not every video result
 
@@ -45,7 +47,9 @@ class GoalContract:
                          "scroll_up", "scroll_down"}:
             return self.kind.replace("_", " ")
         if self.kind == "open_site":
-            return f"Open {self.site}; no search or result opening requested"
+            return f"Open {self.expected_url or self.site}; no search or result opening requested"
+        if self.kind == "open_url":
+            return f"Open the spoken address {self.expected_url}"
         text = f"Search {self.site} for {self.query!r}"
         requested = "Short" if self.result_type == "short" else "result"
         suffix = f"; then open {requested} number {self.ordinal}" if self.ordinal else "; show results only"
@@ -319,6 +323,7 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
     if _NEGATED.search(navigation_text):
         return {}
     named = [s for s in HOMES if re.search(rf"\b{re.escape(s.replace('_', ' '))}\b", navigation_text, re.I)]
+    addresses = [as_https(value) for value in url_candidates(navigation_text)]
     # Existing blank tabs remain usable; don't silently move a supported site's search to Google.
     current_site = scope(page.url)
     new_tab_search = bool(spans and re.search(r"\bnew\s+tab\b", navigation_text, re.I))
@@ -383,13 +388,20 @@ def contract_options(goal: Goal, page: Snapshot) -> dict[str, GoalContract]:
                     options[key] = GoalContract("", "switch_tab", target_tab=candidate.action["tab_id"])
         # "switch to the GitHub tab" names a browser tab, not a link; "open X in a new tab" is a link.
         tab_command = bool(tab_reference) and "new_tab" not in spoken
-        if _NAVIGATE_WORDS.search(navigation_text) and not tab_command and not offered_media:
-            options["open_link"] = GoalContract(scope(page.url) or "", "open_link")
+        named_result = re.search(r"\bresults?\b", navigation_text, re.I)
+        if (_NAVIGATE_WORDS.search(navigation_text) and not tab_command and not offered_media
+                and (not named or named_result) and not addresses):
+            options["open_link"] = GoalContract(named[0] if named_result and named else
+                                                scope(page.url) or "", "open_link",
+                                                link_scope_explicit=bool(named_result and named))
         # A website's homepage cannot fulfil an explicit request for a search result.
         # Keep every safe page destination; Laya still has to identify the requested result.
-        named_result = re.search(r"\bresults?\b", navigation_text, re.I)
-        if named and not tab_reference and not named_result and named[0] in definitions():
-            options[f"open:{named[0]}"] = GoalContract(named[0], "open_site")
+        if named and not tab_reference and not named_result:
+            exact_address = next((url for url in addresses if scope(url) == named[0]), "")
+            options[f"open:{named[0]}"] = GoalContract(named[0], "open_site",
+                                                        expected_url=exact_address)
+        elif len(addresses) == 1 and not tab_reference and not named_result:
+            options["open_url"] = GoalContract("", "open_url", expected_url=addresses[0])
         # Nothing spoken maps to an outcome: clarify rather than fall through to reopening the site,
         # which would verify immediately and report success for having done nothing.
         return options
@@ -490,11 +502,21 @@ def verify(contract: GoalContract, page: Snapshot) -> Verification:
         ready = (_url_key(page.url) == _url_key(contract.expected_url)
                  and bool(page.title and (page.text or page.elements)))
         return Verification(ready, "requested result rendered" if ready else "requested result not open")
+    if contract.kind == "open_site":
+        from .goals import HOMES
+
+        home = urlparse(HOMES[contract.site])
+        arrived = (scope(page.url) == contract.site
+                   and (_url_key(page.url) == _url_key(contract.expected_url) if contract.expected_url
+                        else urlparse(page.url).path.rstrip("/") == home.path.rstrip("/")))
+        ready = arrived and bool(page.title and (page.text or page.elements))
+        return Verification(ready, "site homepage rendered" if ready else "site homepage not rendered")
+    if contract.kind == "open_url":
+        ready = (_url_key(page.url) == _url_key(contract.expected_url)
+                 and bool(page.title and (page.text or page.elements)))
+        return Verification(ready, "address rendered" if ready else "address not rendered")
     if scope(page.url) != contract.site or page.browsing.get("site") != contract.site:
         return Verification(False, "requested site not observed")
-    if contract.kind == "open_site":
-        ready = bool(page.title and (page.text or page.elements))
-        return Verification(ready, "site rendered" if ready else "site not rendered")
     matched = search_matches(page, contract.site, contract.query)
     if matched:
         contract.search_observed = True

@@ -23,7 +23,7 @@ _DESTINATION = re.compile(
     re.I,
 )
 _DOMAIN = re.compile(
-    r"(?:https?://)?(?:[a-z0-9-]+\.)+(?:com|org|net|io|ai|dev|co|edu|gov|app|me|tv|uk|us)"
+    r"(?:https?://)?(?:[a-z0-9-]+\.)+[a-z]{2,24}"
     r"(?:/[^\s]*)?",
     re.I,
 )

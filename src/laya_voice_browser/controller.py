@@ -51,6 +51,10 @@ def _unconsumed(text: str, consumed: str) -> str | None:
 
 def _browser_problem(exc: Exception) -> str:
     """A short island label for why the browser could not be used."""
+    from .browser import BrowserBusy
+
+    if isinstance(exc, BrowserBusy):
+        return "Safari still loading" if "loading" in str(exc) else "Safari session busy"
     if "connecting to a Safari instance" in str(exc):
         return "Restart Safari"
     return "Browser failed"

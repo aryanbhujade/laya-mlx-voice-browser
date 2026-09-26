@@ -189,6 +189,29 @@ def test_articles_about_captchas_are_not_browser_challenges():
     assert browser_blocker(page) is None
 
 
+def test_universal_back_does_not_snapshot_a_broken_page():
+    class BrokenSnapshotBrowser:
+        executed = []
+
+        def snapshot(self):
+            raise RuntimeError("page snapshot is broken")
+
+        def execute(self, action, expected_fingerprint=None):
+            assert expected_fingerprint is None
+            self.executed.append(action)
+            return {"ok": True}
+
+    browser = BrokenSnapshotBrowser()
+    controller = GoalController(browser, Engine(), announce=lambda _: None)
+    try:
+        controller.submit(event("go back"))
+        controller.wait_idle()
+        assert controller.goal.status == "direct_done"
+        assert browser.executed == [{"type": "back"}]
+    finally:
+        controller.close()
+
+
 @pytest.mark.parametrize("answer", [
     {}, {"choice": "x", "probabilities": {"x": 1}},
     {"choice": "a", "probabilities": {"a": float("nan"), "b": 0}},
@@ -229,7 +252,8 @@ class Browser:
         if self.stale_once:
             self.stale_once = False
             raise StalePage()
-        assert expected_fingerprint == self.snapshot().fingerprint
+        if expected_fingerprint is not None:
+            assert expected_fingerprint == self.snapshot().fingerprint
         self.executed.append(action)
         self.index += 1
         return {"ok": True, "after_url": self.snapshot().url}

@@ -11,7 +11,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .goals import Candidate, Goal, action_space, literal_spans, materialize
+from .goals import Candidate, Goal, action_space, literal_spans, materialize, scope
 from .laya import LayaEngine
 from .types import Snapshot
 
@@ -112,10 +112,15 @@ class GoalEngine(LayaEngine):
         # Searches/result chains retain their own outcome schema and cannot degrade to a link.
         nominated = None
         kinds = {c.kind for c in contracts.values()}
-        if kinds <= {"open_link", "open_site"} and not navigation_request(goal.text):
+        if kinds <= {"open_link", "open_site", "open_url"} and not navigation_request(goal.text):
             raise UncertainDecision("Ask directly to open a destination; indirect speech cannot act")
         if "open_link" in kinds and kinds <= {"open_link", "open_site"}:
             destinations = link_options(page)
+            link_site = next((c.site for c in contracts.values()
+                              if c.kind == "open_link" and c.link_scope_explicit), "")
+            if link_site:
+                destinations = {key: candidate for key, candidate in destinations.items()
+                                if scope(candidate.action["url"]) == link_site}
             for key, contract in contracts.items():
                 if contract.kind == "open_site":
                     destinations[key] = Candidate(f"{contract.site} homepage — {HOMES[contract.site]}",
@@ -134,6 +139,7 @@ class GoalEngine(LayaEngine):
             contracts = {key: c for key, c in contracts.items() if c.kind == selected_kind}
         descriptions = {
             "open_site": "Open the requested website. No search or result opening.",
+            "open_url": "Open the web address explicitly spoken by the user.",
             "search": "Search for the requested topic and show the results.",
             "open_result": "Open a particular video, article, repository or item from search results.",
             "close_tab": "Close the current browser tab.",
@@ -199,6 +205,9 @@ class GoalEngine(LayaEngine):
             chosen = nominated
             if chosen is None:
                 links = link_options(page)
+                if goal.contract and goal.contract.link_scope_explicit:
+                    links = {key: candidate for key, candidate in links.items()
+                             if scope(candidate.action["url"]) == goal.contract.site}
                 if not links:
                     raise UncertainDecision("There is no link on this page to open")
                 links["none"] = Candidate("None of these is the requested link",
